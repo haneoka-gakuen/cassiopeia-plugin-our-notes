@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: haneoka-gakuen/cassiopeia
+          path: .deps/cassiopeia
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm --dir .deps/cassiopeia install --frozen-lockfile
+      - run: pnpm --dir .deps/cassiopeia build:web
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm link .deps/cassiopeia
+      - run: pnpm check
+      - run: npm pack --dry-run --ignore-scripts
