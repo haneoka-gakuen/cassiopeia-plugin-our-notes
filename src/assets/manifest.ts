@@ -220,6 +220,12 @@ export type OurNotesNoteSkin = "skin001" | "skin002" | "skin003";
 
 export const OUR_NOTES_NOTE_SKINS: readonly OurNotesNoteSkin[] = ["skin001", "skin002", "skin003"];
 
+export const OUR_NOTES_NOTE_SKIN_NAMES: Readonly<Record<OurNotesNoteSkin, Readonly<Record<string, string>>>> = {
+  skin001: { ja: "アワーノーツ", en: "Our Notes", "zh-TW": "交織的樂章", "zh-CN": "交织的乐章", ko: "아워 노트" },
+  skin002: { ja: "ガルパ", en: "Garupa", "zh-TW": "邦邦", "zh-CN": "少女乐团派对", ko: "걸파" },
+  skin003: { ja: "ハニカム", en: "Honeycomb", "zh-TW": "Honeycomb", "zh-CN": "蜂巢", ko: "허니콤" },
+};
+
 export function ourNotesNoteAtlasSource(skin: OurNotesNoteSkin): string {
   return `Assets/AddressableResources/Live/Note/${skin}/${skin}.spriteatlasv2`;
 }
