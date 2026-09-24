@@ -64,7 +64,6 @@ export const DEFAULT_RENDER_SETTINGS: RenderSettings = {
   mirror: false,
   effects: true,
   noteSize: 1,
-  // International 1.0.1 MasterOptionDefault preset 1: both opacity values are 60.
   longAlpha: 0.6,
   guideAlpha: 0.6,
   // MasterOptionDefault: LiveQuality=1.
