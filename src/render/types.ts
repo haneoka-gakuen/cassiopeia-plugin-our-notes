@@ -1,7 +1,15 @@
 import type { OurNotesAssetManifest, TmpSdfFontAssetManifest } from "../assets/manifest";
 
 export type RenderNoteKind =
-  "tap" | "flick" | "flick-left" | "flick-right" | "slide-start" | "slide-node" | "slide-end" | "trace" | "guide";
+  | "tap"
+  | "flick"
+  | "flick-left"
+  | "flick-right"
+  | "slide-start"
+  | "slide-node"
+  | "slide-end"
+  | "trace"
+  | "guide";
 
 export type RenderDirection = "none" | "left" | "right" | "up";
 

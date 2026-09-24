@@ -47,6 +47,17 @@ export interface ParticleAssetManifest {
   effect001PrefabIds: typeof EFFECT001_PREFAB_IDS;
 }
 
+export interface OurNotesSlideLineGradient {
+  readonly colors: readonly (readonly [number, number, number, number])[];
+  readonly alpha: readonly [number, number, number, number];
+}
+
+export interface OurNotesSlideLineStyle {
+  readonly normal: OurNotesSlideLineGradient;
+  readonly pressed: OurNotesSlideLineGradient;
+  readonly guide: readonly [number, number, number, number];
+}
+
 export type LaneEffectAssetKey = "inVain" | "normal" | "slide" | "flick" | "flickLeft" | "flickRight";
 
 /** Lane effects are a separate native pipeline from note judgement effects. */
@@ -180,13 +191,14 @@ export interface OurNotesAssetManifest {
   id: string;
   source: {
     game: "BanG Dream! Our Notes";
-    noteSkin: "skin001";
+    noteSkin: OurNotesNoteSkin;
     laneSkin: "skin001";
     noteEffectSkin: "effect001";
   };
   noteAtlas: SpriteAtlasManifest;
   lane: LaneAssetManifest;
   particles: ParticleAssetManifest;
+  slideLineStyle: OurNotesSlideLineStyle;
   hud: HudAssetManifest;
   tmpSdfFont?: TmpSdfFontAssetManifest;
   noteSounds: NoteSoundAssetManifest;
@@ -198,9 +210,55 @@ export interface OurNotesAssetManifest {
 /** Exact build-specific media URLs resolved from Unity source descriptors. */
 export interface OurNotesRuntimeMediaManifest {
   noteAtlasTextureUrl: string;
+  /** Selected from the note skins present in the active release. */
+  noteSkin?: OurNotesNoteSkin;
   fontAtlasTextureUrl?: string;
   hud: HudAssetManifest;
 }
+
+export type OurNotesNoteSkin = "skin001" | "skin002" | "skin003";
+
+export const OUR_NOTES_NOTE_SKINS: readonly OurNotesNoteSkin[] = ["skin001", "skin002", "skin003"];
+
+export function ourNotesNoteAtlasSource(skin: OurNotesNoteSkin): string {
+  return `Assets/AddressableResources/Live/Note/${skin}/${skin}.spriteatlasv2`;
+}
+
+const nativeSlideLineStyles: Record<OurNotesNoteSkin, OurNotesSlideLineStyle> = {
+  skin001: {
+    normal: {
+      colors: [[0, 0.30660379, 0.41371399, 1], [0.55, 0.31523672, 0.49328363, 0.86792451], [1, 0.3037113, 0.53769982, 0.85849059]],
+      alpha: [0.00882, 0.78431374, 1, 0.78431374],
+    },
+    pressed: {
+      colors: [[0, 0.33490568, 0.62105024, 1], [0.55, 0.2971698, 0.64050645, 1], [0.75883, 0.28627455, 0.74474829, 1], [1, 0.35294116, 0.90718508, 1]],
+      alpha: [0, 0.72549021, 1, 0.66666669],
+    },
+    guide: [0.60784316, 0.48627451, 1, 0.47058824],
+  },
+  skin002: {
+    normal: {
+      colors: [[0, 0.40784317, 0.93333334, 0.46008569], [0.50001, 0.41176465, 0.93333334, 0.48584169], [1, 0.41176465, 0.93333334, 0.54775292]],
+      alpha: [0, 0.43137255, 1, 0.39215687],
+    },
+    pressed: {
+      colors: [[0, 0.46752, 0.96226, 0.51071], [0.50001, 0.44936, 0.96226, 0.52263], [1, 0.45394, 0.95283, 0.5877]],
+      alpha: [0, 0.54901961, 1, 0.54901961],
+    },
+    guide: [0.42697579, 0.9528302, 0.8797366, 0.35294119],
+  },
+  skin003: {
+    normal: {
+      colors: [[0, 0.30660379, 0.41371399, 1], [0.55, 0.31523672, 0.49328363, 0.86792451], [1, 0.3037113, 0.53769982, 0.85849059]],
+      alpha: [0.00882, 0.78431374, 1, 0.78431374],
+    },
+    pressed: {
+      colors: [[0, 0.33490568, 0.62105024, 1], [0.55, 0.2971698, 0.64050645, 1], [0.75883, 0.28627455, 0.74474829, 1], [1, 0.35294116, 0.90718508, 1]],
+      alpha: [0, 0.72549021, 1, 0.66666669],
+    },
+    guide: [0.19215685, 0.68298382, 1, 0.43137255],
+  },
+};
 
 /** Host controls storage: HTTPS, bundled files, or an application resource scheme. */
 export interface OurNotesAssetResolver {
@@ -228,7 +286,7 @@ export function createOurNotesAssetManifest(
     }
     return value;
   };
-  return visit(buildOurNotesSkin001Manifest(media)) as OurNotesAssetManifest;
+  return visit(buildOurNotesSkinManifest(media)) as OurNotesAssetManifest;
 }
 
 /**
@@ -1053,24 +1111,41 @@ const noteSprites: SpriteMetadataRef[] = [
   }),
 ];
 
+function noteSkinSprites(skin: OurNotesNoteSkin): SpriteMetadataRef[] {
+  const sprites = noteSprites.filter(
+    (entry) => skin !== "skin002" || entry.name !== "notes_flick_arrow_right_04",
+  );
+  const upper =
+    skin === "skin003"
+      ? Array.from({ length: 8 }, (_, index) => sprite(`notes_flick_arrow_upper_${String(index + 1).padStart(2, "0")}`, "flick"))
+      : [];
+  return [...sprites, ...upper]
+    .filter((entry) => skin !== "skin003" || !/^notes_flick_arrow_upper_(?:S|M|L|LL)$/.test(entry.name))
+    .map((entry) => ({
+      ...entry,
+      metadataUrl: entry.metadataUrl.replaceAll("/skin001/", `/${skin}/`),
+    }));
+}
+
 /**
  * Live skin template. Palette values are sampled from the skin001 reference
  * sheet; build-specific atlas/HUD media must be injected from descriptors.
  */
-const buildOurNotesSkin001Manifest = (runtimeMedia: OurNotesRuntimeMediaManifest): OurNotesAssetManifest => ({
-  id: "our-notes-skin001-effect001",
+const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): OurNotesAssetManifest => ({
+  id: `our-notes-${runtimeMedia.noteSkin ?? "skin001"}-effect001`,
   source: {
     game: "BanG Dream! Our Notes",
-    noteSkin: "skin001",
+    noteSkin: runtimeMedia.noteSkin ?? "skin001",
     laneSkin: "skin001",
     noteEffectSkin: "effect001",
   },
   noteAtlas: {
-    id: "skin001",
+    id: runtimeMedia.noteSkin ?? "skin001",
     textureUrl: runtimeMedia.noteAtlasTextureUrl,
-    atlasMetadataUrl: unityObject(`${NOTE_SOURCE}/skin001.spriteatlasv2`, "SpriteAtlas"),
-    sprites: noteSprites,
+    atlasMetadataUrl: unityObject(ourNotesNoteAtlasSource(runtimeMedia.noteSkin ?? "skin001"), "SpriteAtlas"),
+    sprites: noteSkinSprites(runtimeMedia.noteSkin ?? "skin001"),
   },
+  slideLineStyle: nativeSlideLineStyles[runtimeMedia.noteSkin ?? "skin001"],
   lane: {
     baseTextureUrl: sourceAsset(`${LANE_SOURCE}/lane_base.png`),
     materialBaseTextureUrl: sourceAsset(`${LANE_SOURCE}/lane_base.png`),
@@ -1224,7 +1299,7 @@ export function ourNotesAssetManifestForRelease(
       `Chart media must use the canonical ${runtimePrefix}, ${assetPrefixes[0]}, or ${assetPrefixes[1]} namespace: ${invalidUrl}`,
     );
   }
-  const serialized = JSON.stringify(buildOurNotesSkin001Manifest(runtimeMedia))
+  const serialized = JSON.stringify(buildOurNotesSkinManifest(runtimeMedia))
     .replaceAll(`${RELEASE_TEMPLATE_ASSET_ROOT}/`, `/assets/${encodedReleaseServer}/`)
     .replaceAll(`${RELEASE_TEMPLATE_RUNTIME_ROOT}/`, runtimePrefix);
   const manifest = JSON.parse(serialized) as OurNotesAssetManifest;
