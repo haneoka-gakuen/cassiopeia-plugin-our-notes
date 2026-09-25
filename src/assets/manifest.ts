@@ -38,11 +38,13 @@ export interface ParticleAssetManifest {
   wallSideTextureUrl: string;
   centerPillarTextureUrl: string;
   centerPillar02TextureUrl: string;
+  /** effect001Simple note_point_simple material texture (ef_circle_icon). */
+  circleIconTextureUrl: string;
   slideLineTextureUrl: string;
   /** Layer-25 LiveLaneEffectView assets, separate from HDR note effects. */
   laneEffects: Readonly<Record<LaneEffectAssetKey, LaneEffectParticleAssetRef>>;
   effect001RootUrl: string;
-  effect001Prefabs: Readonly<Record<keyof typeof EFFECT001_PREFAB_IDS, Effect001PrefabAssetRef>>;
+  effect001Prefabs: Readonly<Record<string, Effect001PrefabAssetRef>>;
   /** LiveNoteEffectAssetSettings prefab slots. */
   effect001PrefabIds: typeof EFFECT001_PREFAB_IDS;
 }
@@ -52,10 +54,27 @@ export interface OurNotesSlideLineGradient {
   readonly alpha: readonly [number, number, number, number];
 }
 
+/**
+ * Live/Unlit/SlideLine glow block, copied from each skin bundle's
+ * slide_line_mat serialized floats. The compiled shader bytecode is not
+ * text-extractable; the renderer combines these values into a symmetric
+ * across-width band.
+ */
+export interface OurNotesSlideLineGlow {
+  readonly color: readonly [number, number, number, number];
+  readonly intensity: number;
+  readonly falloff: number;
+  readonly width: number;
+  readonly disabledScale: number;
+  readonly enabledScale: number;
+  readonly pressedScale: number;
+}
+
 export interface OurNotesSlideLineStyle {
   readonly normal: OurNotesSlideLineGradient;
   readonly pressed: OurNotesSlideLineGradient;
   readonly guide: readonly [number, number, number, number];
+  readonly glow: OurNotesSlideLineGlow;
 }
 
 export type LaneEffectAssetKey = "inVain" | "normal" | "slide" | "flick" | "flickLeft" | "flickRight";
@@ -68,7 +87,13 @@ export interface LaneEffectParticleAssetRef {
   lifetime: number;
 }
 
-export type Effect001TextureKey = "star" | "longStar" | "centerPillar" | "centerPillar02" | "wall";
+export type Effect001TextureKey =
+  | "star"
+  | "longStar"
+  | "centerPillar"
+  | "centerPillar02"
+  | "wall"
+  | "circleIcon";
 export type Effect001AnimationJudgement = "perfect" | "great" | "good" | "bad";
 
 /** A visible ParticleSystem component in an effect001 prefab. */
@@ -187,15 +212,35 @@ export type NoteSoundAsset = string | ReadonlyArray<NoteSoundAssetLayer>;
 
 export type NoteSoundAssetManifest = Readonly<Record<NoteSoundAssetKey, NoteSoundAsset>>;
 
+export interface OurNotesArrowGradientSettings {
+  readonly bandWidth: number;
+  readonly minAlpha: number;
+}
+
+/**
+ * skin003 ArrowGradientSettings / ArrowGradientSettingsLeft/Right: the
+ * Sirius/ArrowGradientCenter shader sweeps a brightness band along each
+ * flick arrow with a per-direction band width; the compiled shader is not
+ * text-extractable, so the renderer recreates the sweep from these values.
+ */
+export interface OurNotesArrowGradientStyle {
+  readonly durationSeconds: number;
+  readonly pauseSeconds: number;
+  readonly center: OurNotesArrowGradientSettings;
+  readonly directional: OurNotesArrowGradientSettings;
+}
+
 export interface OurNotesAssetManifest {
   id: string;
   source: {
     game: "BanG Dream! Our Notes";
     noteSkin: OurNotesNoteSkin;
     laneSkin: "skin001";
-    noteEffectSkin: "effect001";
+    noteEffectSkin: OurNotesNoteEffectSkin;
   };
   noteAtlas: SpriteAtlasManifest;
+  /** Present only for skins whose flick arrows carry authored gradient settings. */
+  arrowGradient?: OurNotesArrowGradientStyle;
   lane: LaneAssetManifest;
   particles: ParticleAssetManifest;
   slideLineStyle: OurNotesSlideLineStyle;
@@ -212,6 +257,8 @@ export interface OurNotesRuntimeMediaManifest {
   noteAtlasTextureUrl: string;
   /** Selected from the note skins present in the active release. */
   noteSkin?: OurNotesNoteSkin;
+  /** Selected from the note effect skins present in the active release. */
+  noteEffectSkin?: OurNotesNoteEffectSkin;
   fontAtlasTextureUrl?: string;
   hud: HudAssetManifest;
 }
@@ -224,6 +271,17 @@ export const OUR_NOTES_NOTE_SKIN_NAMES: Readonly<Record<OurNotesNoteSkin, Readon
   skin001: { ja: "アワーノーツ", en: "Our Notes", "zh-TW": "交織的樂章", "zh-CN": "交织的乐章", ko: "아워 노트" },
   skin002: { ja: "ガルパ", en: "Garupa", "zh-TW": "邦邦", "zh-CN": "少女乐团派对", ko: "걸파" },
   skin003: { ja: "ハニカム", en: "Honeycomb", "zh-TW": "Honeycomb", "zh-CN": "蜂巢", ko: "허니콤" },
+};
+
+export type OurNotesNoteEffectSkin = "effect001" | "effect001Simple";
+
+export const OUR_NOTES_NOTE_EFFECT_SKINS: readonly OurNotesNoteEffectSkin[] = ["effect001", "effect001Simple"];
+
+export const OUR_NOTES_NOTE_EFFECT_SKIN_NAMES: Readonly<
+  Record<OurNotesNoteEffectSkin, Readonly<Record<string, string>>>
+> = {
+  effect001: { ja: "ノーマル", en: "Default", "zh-TW": "預設", "zh-CN": "默认", ko: "기본" },
+  effect001Simple: { ja: "シンプル", en: "Simple", "zh-TW": "簡潔", "zh-CN": "简洁", ko: "심플" },
 };
 
 export function ourNotesNoteAtlasSource(skin: OurNotesNoteSkin): string {
@@ -241,6 +299,15 @@ const nativeSlideLineStyles: Record<OurNotesNoteSkin, OurNotesSlideLineStyle> = 
       alpha: [0, 0.72549021, 1, 0.66666669],
     },
     guide: [0.60784316, 0.48627451, 1, 0.47058824],
+    glow: {
+      color: [0.1367925, 0.8075257, 1, 1],
+      intensity: 0.5,
+      falloff: 2.7,
+      width: 1,
+      disabledScale: 0.4,
+      enabledScale: 0.28,
+      pressedScale: 0.87,
+    },
   },
   skin002: {
     normal: {
@@ -252,6 +319,15 @@ const nativeSlideLineStyles: Record<OurNotesNoteSkin, OurNotesSlideLineStyle> = 
       alpha: [0, 0.54901961, 1, 0.54901961],
     },
     guide: [0.42697579, 0.9528302, 0.8797366, 0.35294119],
+    glow: {
+      color: [0.1619793, 0.9811321, 0.2226573, 1],
+      intensity: 0.9,
+      falloff: 4.3499999,
+      width: 0.87,
+      disabledScale: 0.1,
+      enabledScale: 0.4,
+      pressedScale: 0.7,
+    },
   },
   skin003: {
     normal: {
@@ -263,6 +339,15 @@ const nativeSlideLineStyles: Record<OurNotesNoteSkin, OurNotesSlideLineStyle> = 
       alpha: [0, 0.72549021, 1, 0.66666669],
     },
     guide: [0.19215685, 0.68298382, 1, 0.43137255],
+    glow: {
+      color: [0.1367925, 0.8075257, 1, 1],
+      intensity: 0.5,
+      falloff: 2.7,
+      width: 1,
+      disabledScale: 0.4,
+      enabledScale: 0.28,
+      pressedScale: 0.87,
+    },
   },
 };
 
@@ -1073,6 +1158,331 @@ export const EFFECT001_PREFABS: Readonly<Record<keyof typeof EFFECT001_PREFAB_ID
   },
 };
 
+// ---------------------------------------------------------------------------
+// effect001Simple (MasterLiveNoteEffectSkin id 2) shipped with the
+// international 1.0.1 release. LiveNoteEffectAssetSettings maps its semantic
+// slots onto note_groove_simple (FlickJust) and reuses note_slide_simple for
+// SlideLoopConnect; note_performance_simple and note_slide_connect_simple are
+// serialized but unreferenced by the settings asset and stay unlisted.
+// ---------------------------------------------------------------------------
+
+const EFFECT001SIMPLE_SOURCE = "Assets/AddressableResources/Effect/Live/NoteEffect/effect001Simple";
+const EFFECT_COMMON_CURRENT_SOURCE = "Assets/AddressableResources/Effect/Live/NoteEffect/common";
+const EFFECT_SIMPLE_CLIP = (name: string): string =>
+  unityObject(`${EFFECT_COMMON_CURRENT_SOURCE}/AnimationSimple/${name}.anim`, "AnimationClip");
+
+const simpleObject = (prefab: string, type: string, ordinal = 0): string =>
+  unityObject(`${EFFECT001SIMPLE_SOURCE}/${prefab}`, type, ordinal);
+
+function simpleParticle(
+  prefab: string,
+  file: string,
+  name: string,
+  texture: Effect001TextureKey,
+  localPosition: readonly [number, number, number],
+  options: Partial<
+    Pick<
+      Effect001ParticleSystemAssetRef,
+      | "localScale"
+      | "shapeWidthOffset"
+      | "widthScaleRange"
+      | "renderer"
+      | "rendererPivot"
+      | "animationPath"
+      | "rendererMaxParticleSize"
+    >
+  > = {},
+): Effect001ParticleSystemAssetRef {
+  const rendererPivot =
+    options.rendererPivot ?? (options.renderer === "wallMesh" ? ([0, -0.21, -0.5] as const) : undefined);
+  const rendererMaxParticleSize = options.rendererMaxParticleSize ?? (texture === "star" ? 0.5 : 1);
+  const object = objectOrdinal(file);
+  return {
+    name,
+    metadataUrl: simpleObject(prefab, object.type, object.ordinal),
+    texture,
+    localPosition,
+    ...options,
+    rendererMaxParticleSize,
+    ...(rendererPivot ? { rendererPivot } : {}),
+  };
+}
+
+function simpleSprite(
+  prefab: string,
+  baseColor: readonly [number, number, number, number],
+): Effect001SpriteAssetRef {
+  return {
+    name: "frame",
+    metadataUrl: simpleObject(prefab, "SpriteRenderer"),
+    baseActive: false,
+    baseColor,
+    baseSize: [5.5, 1.75],
+    pivot: [0.5, 0.5],
+    localPosition: [0, 0, 0],
+    localScale: [1.02, 1, 1],
+    localRotationX: Math.PI / 2,
+  };
+}
+
+const SIMPLE_TAP_CLIPS = {
+  perfect: EFFECT_SIMPLE_CLIP("note_simple_perfect"),
+  great: EFFECT_SIMPLE_CLIP("note_simple_great"),
+  good: EFFECT_SIMPLE_CLIP("note_simple_good"),
+  bad: EFFECT_SIMPLE_CLIP("note_simple_bad"),
+} as const;
+const SIMPLE_SLIDE_CLIPS = {
+  perfect: EFFECT_SIMPLE_CLIP("note_slide_simple_parfect"),
+  great: EFFECT_SIMPLE_CLIP("note_slide_simple_great"),
+  good: EFFECT_SIMPLE_CLIP("note_slide_simple_good"),
+  bad: EFFECT_SIMPLE_CLIP("note_slide_simple_bad"),
+} as const;
+const SIMPLE_FLICK_CLIPS = {
+  perfect: EFFECT_SIMPLE_CLIP("tap_flick_simple_perfect"),
+  great: EFFECT_SIMPLE_CLIP("tap_flick_simple_great"),
+  good: EFFECT_SIMPLE_CLIP("tap_flick_simple_good"),
+  bad: EFFECT_SIMPLE_CLIP("tap_flick_simple_bad"),
+} as const;
+const SIMPLE_SLIDE_LOOP_CLIP = EFFECT_SIMPLE_CLIP("note_slide_simple_loop");
+
+export const EFFECT001SIMPLE_PREFABS: Readonly<Record<string, Effect001PrefabAssetRef>> = {
+  Normal: {
+    id: EFFECT001_PREFAB_IDS.Normal,
+    rootScaleX: 1,
+    loopAnimation: false,
+    animationClipUrl: SIMPLE_TAP_CLIPS.perfect,
+    animationClipUrls: SIMPLE_TAP_CLIPS,
+    particleSystems: [
+      simpleParticle("note_normal_simple.prefab", "ParticleSystem.asset", "ef_particle_point_center", "circleIcon", [0, -0.53, 0.55], {
+        animationPath: "ef_splash/ef_particle_point_center",
+        shapeWidthOffset: 0.08,
+      }),
+      simpleParticle("note_normal_simple.prefab", "ParticleSystem_2.asset", "ef_particle_point", "circleIcon", [0, -0.53, 0.55], {
+        animationPath: "ef_splash/ef_particle_point",
+        shapeWidthOffset: 0.08,
+      }),
+      simpleParticle("note_normal_simple.prefab", "ParticleSystem_3.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
+        animationPath: "ef_splash/ef_wall_center",
+        localScale: [4.9, 1, 1],
+        renderer: "wallMesh",
+      }),
+    ],
+    sprites: [
+      simpleSprite("note_normal_simple.prefab", [
+        0.0777856633067131, 0.23382169008255005, 0.8679245114326477, 0,
+      ]),
+    ],
+  },
+  Slide: {
+    id: EFFECT001_PREFAB_IDS.Slide,
+    rootScaleX: 1,
+    loopAnimation: false,
+    animationClipUrl: SIMPLE_SLIDE_CLIPS.perfect,
+    animationClipUrls: SIMPLE_SLIDE_CLIPS,
+    particleSystems: [
+      simpleParticle("note_slide_simple.prefab", "ParticleSystem.asset", "ef_particle_point", "circleIcon", [0, -0.53, 0.55], {
+        animationPath: "ef_splash/ef_particle_point",
+        shapeWidthOffset: 0.08,
+      }),
+      simpleParticle("note_slide_simple.prefab", "ParticleSystem_2.asset", "ef_particle_point_center", "circleIcon", [0, -0.53, 0.55], {
+        animationPath: "ef_splash/ef_particle_point_center",
+        shapeWidthOffset: 0.08,
+      }),
+      simpleParticle("note_slide_simple.prefab", "ParticleSystem_3.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
+        animationPath: "ef_splash/ef_wall_center",
+        localScale: [4.9, 1, 1],
+        renderer: "wallMesh",
+      }),
+    ],
+    sprites: [
+      simpleSprite("note_slide_simple.prefab", [
+        0.19215686274509805, 0.11372549019607843, 0.9058823529411765, 1,
+      ]),
+    ],
+  },
+  Flick: {
+    id: EFFECT001_PREFAB_IDS.Flick,
+    rootScaleX: 1,
+    loopAnimation: false,
+    animationClipUrl: SIMPLE_FLICK_CLIPS.perfect,
+    animationClipUrls: SIMPLE_FLICK_CLIPS,
+    particleSystems: [
+      simpleParticle(
+        "note_flick_simple.prefab",
+        "ParticleSystem_1.asset",
+        "ef_particle_point01",
+        "star",
+        [0, 0.7100000381469727, 0],
+        { animationPath: "ef_splash_move/ef_particle_point01", widthScaleRange: [0.05, 3] },
+      ),
+      simpleParticle(
+        "note_flick_simple.prefab",
+        "ParticleSystem_2.asset",
+        "ef_particle_point02",
+        "star",
+        [0, 0.7100000381469727, 0],
+        { animationPath: "ef_splash_move/ef_particle_point02", widthScaleRange: [0.05, 3] },
+      ),
+      simpleParticle("note_flick_simple.prefab", "ParticleSystem_4.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
+        animationPath: "ef_splash/ef_wall_center",
+        localScale: [4.9, 1, 1],
+        renderer: "wallMesh",
+      }),
+    ],
+    sprites: [
+      simpleSprite("note_flick_simple.prefab", [
+        0.6792452931404114, 0.30566415190696716, 0.06728372722864151, 0,
+      ]),
+    ],
+  },
+  Left: {
+    id: EFFECT001_PREFAB_IDS.Left,
+    rootScaleX: 1,
+    loopAnimation: false,
+    animationClipUrl: SIMPLE_FLICK_CLIPS.perfect,
+    animationClipUrls: SIMPLE_FLICK_CLIPS,
+    // tap_flick_simple clips bind LocalPosition and rateOverDistance on
+    // CRC32("ef_splash_move/ef_splash"), the moving long-glow emitter.
+    distanceEmitterPathHash: unityStringHash("ef_splash_move/ef_splash"),
+    particleSystems: [
+      simpleParticle("note_flick_left_simple.prefab", "ParticleSystem.asset", "ef_splash02", "star", [0, 0, 0], {
+        animationPath: "ef_splash_move/ef_splash/ef_splash02",
+        widthScaleRange: [0.0820000022649765, 1.5],
+      }),
+      simpleParticle("note_flick_left_simple.prefab", "ParticleSystem_2.asset", "ef_splash", "longStar", [0, 0, 0], {
+        animationPath: "ef_splash_move/ef_splash",
+        widthScaleRange: [0.0820000022649765, 1.5],
+      }),
+      simpleParticle("note_flick_left_simple.prefab", "ParticleSystem_3.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
+        animationPath: "ef_splash/ef_wall_center",
+        localScale: [4.9, 1, 1],
+        renderer: "wallMesh",
+      }),
+    ],
+    sprites: [
+      simpleSprite("note_flick_left_simple.prefab", [
+        0.039382338523864746, 0.5566037893295288, 0.14450867474079132, 0,
+      ]),
+    ],
+  },
+  Right: {
+    id: EFFECT001_PREFAB_IDS.Right,
+    rootScaleX: -1,
+    loopAnimation: false,
+    animationClipUrl: SIMPLE_FLICK_CLIPS.perfect,
+    animationClipUrls: SIMPLE_FLICK_CLIPS,
+    distanceEmitterPathHash: unityStringHash("ef_splash_move/ef_splash"),
+    particleSystems: [
+      simpleParticle("note_flick_right_simple.prefab", "ParticleSystem.asset", "ef_splash02", "star", [0, 0, 0], {
+        animationPath: "ef_splash_move/ef_splash/ef_splash02",
+        widthScaleRange: [0.0820000022649765, 1.5],
+      }),
+      simpleParticle("note_flick_right_simple.prefab", "ParticleSystem_3.asset", "ef_splash", "longStar", [0, 0, 0], {
+        animationPath: "ef_splash_move/ef_splash",
+        widthScaleRange: [0.0820000022649765, 1.5],
+      }),
+      simpleParticle("note_flick_right_simple.prefab", "ParticleSystem_2.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
+        animationPath: "ef_splash/ef_wall_center",
+        localScale: [4.9, 1, 1],
+        renderer: "wallMesh",
+      }),
+    ],
+    sprites: [
+      simpleSprite("note_flick_right_simple.prefab", [1.0, 0.15566039085388184, 0.6591655611991882, 0]),
+    ],
+  },
+  // FlickJustEffect slot: the settings asset resolves Just to note_groove_simple.
+  Excellent: {
+    id: EFFECT001_PREFAB_IDS.Excellent,
+    rootScaleX: 1,
+    loopAnimation: false,
+    animationClipUrl: SIMPLE_TAP_CLIPS.perfect,
+    animationClipUrls: SIMPLE_TAP_CLIPS,
+    particleSystems: [
+      simpleParticle("note_groove_simple.prefab", "ParticleSystem_2.asset", "ef_particle_point", "circleIcon", [0, -0.531000018119812, 0], {
+        animationPath: "ef_splash/ef_particle_point",
+        shapeWidthOffset: -0.019999999552965164,
+      }),
+      simpleParticle("note_groove_simple.prefab", "ParticleSystem_3.asset", "ef_particle_point_center", "circleIcon", [0, -0.5299999713897705, 0], {
+        animationPath: "ef_splash/ef_particle_point_center",
+        shapeWidthOffset: 0.07999999821186066,
+      }),
+      simpleParticle("note_groove_simple.prefab", "ParticleSystem.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
+        animationPath: "ef_splash/ef_wall_center",
+        localScale: [4.9, 1, 1],
+        renderer: "wallMesh",
+      }),
+    ],
+    sprites: [
+      simpleSprite("note_groove_simple.prefab", [0.5, 0.45834264159202576, 0.030660390853881836, 0]),
+    ],
+  },
+  SlideLoop: {
+    id: EFFECT001_PREFAB_IDS.SlideLoop,
+    rootScaleX: 1,
+    loopAnimation: true,
+    animationClipUrl: SIMPLE_SLIDE_LOOP_CLIP,
+    particleSystems: [
+      // The authored GameObject names keep a trailing underscore / space.
+      simpleParticle(
+        "note_slide_simple_loop.prefab",
+        "ParticleSystem_1.asset",
+        "ef_particle_point_",
+        "circleIcon",
+        [0, -0.800000011920929, 0.41999998688697815],
+        { animationPath: "ef_slide_loop/ef_particle_point_" },
+      ),
+      simpleParticle(
+        "note_slide_simple_loop.prefab",
+        "ParticleSystem_3.asset",
+        "ef_particle_point ",
+        "circleIcon",
+        [0, -0.5299999713897705, 0.6499999761581421],
+        { animationPath: "ef_slide_loop/ef_particle_point ", shapeWidthOffset: 0.07999999821186066 },
+      ),
+      simpleParticle("note_slide_simple_loop.prefab", "ParticleSystem_2.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
+        animationPath: "ef_slide_loop/ef_wall_center",
+        localScale: [4.9, 1, 1],
+        renderer: "wallMesh",
+      }),
+    ],
+    sprites: [
+      simpleSprite("note_slide_simple_loop.prefab", [
+        0.19215686274509805, 0.11372549019607843, 0.9058823529411765, 1,
+      ]),
+    ],
+  },
+  // SlideLoopConnectEffect shares note_slide_simple with SlideEffect in the
+  // settings asset; both slots reference one asset instance.
+  Connect: {
+    id: EFFECT001_PREFAB_IDS.Connect,
+    rootScaleX: 1,
+    loopAnimation: false,
+    animationClipUrl: SIMPLE_SLIDE_CLIPS.perfect,
+    animationClipUrls: SIMPLE_SLIDE_CLIPS,
+    particleSystems: [
+      simpleParticle("note_slide_simple.prefab", "ParticleSystem.asset", "ef_particle_point", "circleIcon", [0, -0.53, 0.55], {
+        animationPath: "ef_splash/ef_particle_point",
+        shapeWidthOffset: 0.08,
+      }),
+      simpleParticle("note_slide_simple.prefab", "ParticleSystem_2.asset", "ef_particle_point_center", "circleIcon", [0, -0.53, 0.55], {
+        animationPath: "ef_splash/ef_particle_point_center",
+        shapeWidthOffset: 0.08,
+      }),
+      simpleParticle("note_slide_simple.prefab", "ParticleSystem_3.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
+        animationPath: "ef_splash/ef_wall_center",
+        localScale: [4.9, 1, 1],
+        renderer: "wallMesh",
+      }),
+    ],
+    sprites: [
+      simpleSprite("note_slide_simple.prefab", [
+        0.19215686274509805, 0.11372549019607843, 0.9058823529411765, 1,
+      ]),
+    ],
+  },
+};
+
 const sprite = (name: string, directory: string): SpriteMetadataRef => ({
   name,
   metadataUrl: unityObject(`${NOTE_SOURCE}/${directory}/${name}.png`, "Sprite"),
@@ -1137,37 +1547,53 @@ function noteSkinSprites(skin: OurNotesNoteSkin): SpriteMetadataRef[] {
  * Live skin template. Palette values are sampled from the skin001 reference
  * sheet; build-specific atlas/HUD media must be injected from descriptors.
  */
-const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): OurNotesAssetManifest => ({
-  id: `our-notes-${runtimeMedia.noteSkin ?? "skin001"}-effect001`,
-  source: {
-    game: "BanG Dream! Our Notes",
-    noteSkin: runtimeMedia.noteSkin ?? "skin001",
-    laneSkin: "skin001",
-    noteEffectSkin: "effect001",
-  },
-  noteAtlas: {
-    id: runtimeMedia.noteSkin ?? "skin001",
-    textureUrl: runtimeMedia.noteAtlasTextureUrl,
-    atlasMetadataUrl: unityObject(ourNotesNoteAtlasSource(runtimeMedia.noteSkin ?? "skin001"), "SpriteAtlas"),
-    sprites: noteSkinSprites(runtimeMedia.noteSkin ?? "skin001"),
-  },
-  slideLineStyle: nativeSlideLineStyles[runtimeMedia.noteSkin ?? "skin001"],
-  lane: {
-    baseTextureUrl: sourceAsset(`${LANE_SOURCE}/lane_base.png`),
-    materialBaseTextureUrl: sourceAsset(`${LANE_SOURCE}/lane_base.png`),
-    tapAreaTextureUrl: sourceAsset(`${LANE_SOURCE}/lane_tap_area.png`),
-    outsideLineTextureUrl: sourceAsset(`${LANE_SOURCE}/out_side_line.png`),
-    referenceImageUrl: sourceAsset(`${LANE_SOURCE}/reference_image.png`),
-  },
-  particles: {
-    starTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_tap_particle_star.png`),
-    longStarTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_tap_particle_star_long.png`),
-    tapLineTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_tap_line.png`),
-    tapPillarTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_tap_pillar.png`),
-    wallTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_wall.png`),
-    wallSideTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_wall_side.png`),
-    centerPillarTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_pillar_center.png`),
-    centerPillar02TextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_pillar_center02.png`),
+const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): OurNotesAssetManifest => {
+  const noteSkin = runtimeMedia.noteSkin ?? "skin001";
+  const noteEffectSkin = runtimeMedia.noteEffectSkin ?? "effect001";
+  return {
+    id: `our-notes-${noteSkin}-${noteEffectSkin}`,
+    source: {
+      game: "BanG Dream! Our Notes",
+      noteSkin,
+      laneSkin: "skin001",
+      noteEffectSkin,
+    },
+    noteAtlas: {
+      id: noteSkin,
+      textureUrl: runtimeMedia.noteAtlasTextureUrl,
+      atlasMetadataUrl: unityObject(ourNotesNoteAtlasSource(noteSkin), "SpriteAtlas"),
+      sprites: noteSkinSprites(noteSkin),
+    },
+    slideLineStyle: nativeSlideLineStyles[noteSkin],
+    // skin003 ArrowGradientSettings{,Left,Right}; skins 001/002 leave the
+    // flick arrows without the shader-driven sweep.
+    ...(noteSkin === "skin003"
+      ? {
+          arrowGradient: {
+            durationSeconds: 0.36000001430511475,
+            pauseSeconds: 0,
+            center: { bandWidth: 0.17000000178813934, minAlpha: 0.699999988079071 },
+            directional: { bandWidth: 0.30000001192092896, minAlpha: 0.699999988079071 },
+          },
+        }
+      : {}),
+    lane: {
+      baseTextureUrl: sourceAsset(`${LANE_SOURCE}/lane_base.png`),
+      materialBaseTextureUrl: sourceAsset(`${LANE_SOURCE}/lane_base.png`),
+      tapAreaTextureUrl: sourceAsset(`${LANE_SOURCE}/lane_tap_area.png`),
+      outsideLineTextureUrl: sourceAsset(`${LANE_SOURCE}/out_side_line.png`),
+      referenceImageUrl: sourceAsset(`${LANE_SOURCE}/reference_image.png`),
+    },
+    particles: {
+      starTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_tap_particle_star.png`),
+      longStarTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_tap_particle_star_long.png`),
+      tapLineTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_tap_line.png`),
+      tapPillarTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_tap_pillar.png`),
+      wallTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_wall.png`),
+      wallSideTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_wall_side.png`),
+      centerPillarTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_pillar_center.png`),
+      centerPillar02TextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_pillar_center02.png`),
+      circleIconTextureUrl: sourceAsset(`${EFFECT_COMMON_CURRENT_SOURCE}/Texture/ef_circle_icon.png`),
     slideLineTextureUrl: sourceAsset(`${NOTE_SOURCE}/slideline_purple2.png`),
     laneEffects: {
       inVain: {
@@ -1216,8 +1642,11 @@ const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): 
         lifetime: 0.44999998807907104 / 2,
       },
     },
-    effect001RootUrl: sourceAsset(`${EFFECT001_SOURCE}/LiveNoteEffectAssetSettings.asset`),
-    effect001Prefabs: EFFECT001_PREFABS,
+    effect001RootUrl: sourceAsset(
+      `${noteEffectSkin === "effect001Simple" ? EFFECT001SIMPLE_SOURCE : EFFECT001_SOURCE}/LiveNoteEffectAssetSettings.asset`,
+    ),
+    effect001Prefabs:
+      noteEffectSkin === "effect001Simple" ? EFFECT001SIMPLE_PREFABS : EFFECT001_PREFABS,
     effect001PrefabIds: EFFECT001_PREFAB_IDS,
   },
   hud: runtimeMedia.hud,
@@ -1264,7 +1693,8 @@ const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): 
     miss: "#d6d8e5",
   },
   tiltThresholds: [0, 2, 4, 6, 8, 10, 12].map((distance, value) => ({ distance, value })),
-});
+  };
+};
 
 export function ourNotesAssetManifestForRelease(
   releaseServer: string,
