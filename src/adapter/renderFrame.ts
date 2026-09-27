@@ -887,7 +887,11 @@ export class RenderFrameBuilder {
       if (points.length < 2) continue;
       output.id = line.id;
       output.kind = line.kind === "guide" ? "guide" : "slide";
-      output.active = timeMs >= line.realStartTimeMs && timeMs <= line.realEndTimeMs;
+      output.active =
+        line.kind !== "guide" &&
+        timeMs >= line.realStartTimeMs &&
+        timeMs < line.realEndTimeMs &&
+        snapshot.lineState.isActive(line.id);
       output.alpha =
         line.kind === "guide"
           ? Math.max(0.1, Math.min(1, settings.guideAlpha ?? DEFAULT_RENDER_SETTINGS.guideAlpha)) *
