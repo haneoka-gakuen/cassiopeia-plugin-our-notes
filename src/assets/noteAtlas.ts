@@ -1,7 +1,7 @@
 import skin001Archive from "./note-skins/skin001.json";
 import skin002Archive from "./note-skins/skin002.json";
 import skin003Archive from "./note-skins/skin003.json";
-import { noteTextureUrls } from "./noteTextures.js";
+import { noteTextureUrl } from "./noteTextures.js";
 
 export type BundledNoteSkin = "skin001" | "skin002" | "skin003";
 
@@ -66,7 +66,7 @@ export interface BundledNoteAtlas {
  * emitted PNGs and external/custom atlas manifests.
  */
 function bundleNoteAtlas(
-  textureFile: string,
+  skin: BundledNoteSkin,
   archive: {
     atlas: unknown;
     sprites: Readonly<Record<string, unknown>>;
@@ -74,7 +74,9 @@ function bundleNoteAtlas(
   },
 ): BundledNoteAtlas {
   return {
-    textureUrl: textureFile,
+    get textureUrl() {
+      return noteTextureUrl(skin);
+    },
     atlasMetadata: archive.atlas,
     spriteMetadata: archive.sprites,
     notes: archive.notes,
@@ -82,7 +84,7 @@ function bundleNoteAtlas(
 }
 
 export const OUR_NOTES_BUNDLED_NOTE_ATLASES: Readonly<Record<BundledNoteSkin, BundledNoteAtlas>> = {
-  skin001: bundleNoteAtlas(noteTextureUrls.skin001, skin001Archive),
-  skin002: bundleNoteAtlas(noteTextureUrls.skin002, skin002Archive),
-  skin003: bundleNoteAtlas(noteTextureUrls.skin003, skin003Archive),
+  skin001: bundleNoteAtlas("skin001", skin001Archive),
+  skin002: bundleNoteAtlas("skin002", skin002Archive),
+  skin003: bundleNoteAtlas("skin003", skin003Archive),
 };

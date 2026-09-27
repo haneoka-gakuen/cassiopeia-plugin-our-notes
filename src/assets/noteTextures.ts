@@ -1,5 +1,12 @@
-export const noteTextureUrls = {
-  skin001: new URL("./note-skins/skin001.png", import.meta.url).href,
-  skin002: new URL("./note-skins/skin002.png", import.meta.url).href,
-  skin003: new URL("./note-skins/skin003.png", import.meta.url).href,
-};
+import type { BundledNoteSkin } from "./noteAtlas";
+
+export function noteTextureUrl(skin: BundledNoteSkin): string {
+  switch (skin) {
+    case "skin001":
+      return new URL("./note-skins/skin001.png", import.meta.url).href;
+    case "skin002":
+      return new URL("./note-skins/skin002.png", import.meta.url).href;
+    case "skin003":
+      return new URL("./note-skins/skin003.png", import.meta.url).href;
+  }
+}
