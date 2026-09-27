@@ -266,7 +266,7 @@ export const OUR_NOTES_NOTE_SKINS: readonly OurNotesNoteSkin[] = ["skin001", "sk
 
 export const OUR_NOTES_NOTE_SKIN_NAMES: Readonly<Record<OurNotesNoteSkin, Readonly<Record<string, string>>>> = {
   skin001: { ja: "アワーノーツ", en: "Our Notes", "zh-TW": "交織的樂章", "zh-CN": "交织的乐章", ko: "아워 노트" },
-  skin002: { ja: "ガルパ", en: "Garupa", "zh-TW": "邦邦", "zh-CN": "少女乐团派对", ko: "걸파" },
+  skin002: { ja: "サイバー", en: "Cyber", "zh-TW": "賽博", "zh-CN": "赛博", ko: "사이버" },
   skin003: { ja: "ハニカム", en: "Honeycomb", "zh-TW": "Honeycomb", "zh-CN": "蜂巢", ko: "허니콤" },
 };
 
@@ -277,8 +277,40 @@ export const OUR_NOTES_NOTE_EFFECT_SKINS: readonly OurNotesNoteEffectSkin[] = ["
 export const OUR_NOTES_NOTE_EFFECT_SKIN_NAMES: Readonly<
   Record<OurNotesNoteEffectSkin, Readonly<Record<string, string>>>
 > = {
-  effect001: { ja: "ノーマル", en: "Default", "zh-TW": "預設", "zh-CN": "默认", ko: "기본" },
-  effect001Simple: { ja: "シンプル", en: "Simple", "zh-TW": "簡潔", "zh-CN": "简洁", ko: "심플" },
+  effect001: { ja: "スタンダード", en: "Standard", "zh-TW": "標準", "zh-CN": "标准", ko: "스탠다드" },
+  effect001Simple: { ja: "シンプル", en: "Simple", "zh-TW": "簡約", "zh-CN": "简洁", ko: "심플" },
+};
+
+export const OUR_NOTES_LANE_SKIN_NAMES: Readonly<Record<"skin001", Readonly<Record<string, string>>>> = {
+  skin001: { ja: "スタンダード", en: "Standard", "zh-TW": "標準", "zh-CN": "标准", ko: "스탠다드" },
+};
+
+export const OUR_NOTES_STAGE_NAMES: Readonly<Record<number, Readonly<Record<string, string>>>> = {
+  0: { ja: "ステージ", en: "Stage", "zh-TW": "舞台", "zh-CN": "舞台", ko: "스테이지" },
+  1: { ja: "MyGO!!!!!", en: "MyGO!!!!!", "zh-TW": "MyGO!!!!!", "zh-CN": "MyGO!!!!!", ko: "MyGO!!!!!" },
+  2: { ja: "Ave Mujica", en: "Ave Mujica", "zh-TW": "Ave Mujica", "zh-CN": "Ave Mujica", ko: "Ave Mujica" },
+  3: {
+    ja: "夢限大みゅーたいぷ",
+    en: "Mugendai MewType",
+    "zh-TW": "夢限大MewType",
+    "zh-CN": "梦限大MewType",
+    ko: "무겐다이 뮤타입",
+  },
+  4: { ja: "millsage", en: "millsage", "zh-TW": "millsage", "zh-CN": "millsage", ko: "millsage" },
+  5: {
+    ja: "一家Dumb Rock!",
+    en: "Ikka Dumb Rock!",
+    "zh-TW": "一家Dumb Rock!",
+    "zh-CN": "一家Dumb Rock!",
+    ko: "일가 Dumb Rock!",
+  },
+};
+
+export const OUR_NOTES_NOTE_SE_GROUP_NAMES: Readonly<Record<number, Readonly<Record<string, string>>>> = {
+  1: { ja: "アワーノーツ", en: "Our Notes", "zh-TW": "交織的樂章", "zh-CN": "交织的乐章", ko: "아워 노트" },
+  2: { ja: "ソリッド", en: "Solid", "zh-TW": "厚實", "zh-CN": "清脆", ko: "솔리드" },
+  3: { ja: "ウッド", en: "Wood", "zh-TW": "木質", "zh-CN": "木材", ko: "우드" },
+  4: { ja: "タイピング", en: "Typing", "zh-TW": "打字", "zh-CN": "打字", ko: "타이핑" },
 };
 
 export function ourNotesNoteAtlasSource(skin: OurNotesNoteSkin): string {
