@@ -6,7 +6,14 @@ export default defineConfig({
     sourcemap: true,
     target: "es2022",
     rollupOptions: {
-      external: (id) => id.startsWith("@haneoka/") || id.startsWith("@sonolus/") || id === "three" || id === "vue",
+      // Preserve static asset URLs for the consuming application bundler.
+      // Library mode otherwise embeds every PNG in this package's JS.
+      external: (id) =>
+        id === "./noteTextures.js" ||
+        id.startsWith("@haneoka/") ||
+        id.startsWith("@sonolus/") ||
+        id === "three" ||
+        id === "vue",
     },
   },
 });

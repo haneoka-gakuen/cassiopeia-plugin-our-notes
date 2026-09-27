@@ -1,5 +1,6 @@
 export * from "./adapter/renderFrame";
 export * from "./assets/manifest";
+export * from "./assets/noteAtlas";
 export * from "./assets/unityHash";
 export * from "./core/chart";
 export * from "./core/parser";

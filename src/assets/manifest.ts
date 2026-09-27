@@ -6,18 +6,21 @@
  */
 
 import { unityStringHash } from "./unityHash";
+import { OUR_NOTES_BUNDLED_NOTE_ATLASES } from "./noteAtlas";
 
 export interface SpriteMetadataRef {
   /** Unity Sprite.m_Name. */
   name: string;
   /** Decoded Unity Sprite JSON (`*.asset`). */
   metadataUrl: string;
+  metadata?: unknown;
 }
 
 export interface SpriteAtlasManifest {
   id: string;
   textureUrl: string;
   atlasMetadataUrl: string;
+  atlasMetadata?: unknown;
   sprites: ReadonlyArray<SpriteMetadataRef>;
 }
 
@@ -87,13 +90,7 @@ export interface LaneEffectParticleAssetRef {
   lifetime: number;
 }
 
-export type Effect001TextureKey =
-  | "star"
-  | "longStar"
-  | "centerPillar"
-  | "centerPillar02"
-  | "wall"
-  | "circleIcon";
+export type Effect001TextureKey = "star" | "longStar" | "centerPillar" | "centerPillar02" | "wall" | "circleIcon";
 export type Effect001AnimationJudgement = "perfect" | "great" | "good" | "bad";
 
 /** A visible ParticleSystem component in an effect001 prefab. */
@@ -254,7 +251,7 @@ export interface OurNotesAssetManifest {
 
 /** Exact build-specific media URLs resolved from Unity source descriptors. */
 export interface OurNotesRuntimeMediaManifest {
-  noteAtlasTextureUrl: string;
+  noteAtlasTextureUrl?: string;
   /** Selected from the note skins present in the active release. */
   noteSkin?: OurNotesNoteSkin;
   /** Selected from the note effect skins present in the active release. */
@@ -291,11 +288,20 @@ export function ourNotesNoteAtlasSource(skin: OurNotesNoteSkin): string {
 const nativeSlideLineStyles: Record<OurNotesNoteSkin, OurNotesSlideLineStyle> = {
   skin001: {
     normal: {
-      colors: [[0, 0.30660379, 0.41371399, 1], [0.55, 0.31523672, 0.49328363, 0.86792451], [1, 0.3037113, 0.53769982, 0.85849059]],
+      colors: [
+        [0, 0.30660379, 0.41371399, 1],
+        [0.55, 0.31523672, 0.49328363, 0.86792451],
+        [1, 0.3037113, 0.53769982, 0.85849059],
+      ],
       alpha: [0.00882, 0.78431374, 1, 0.78431374],
     },
     pressed: {
-      colors: [[0, 0.33490568, 0.62105024, 1], [0.55, 0.2971698, 0.64050645, 1], [0.75883, 0.28627455, 0.74474829, 1], [1, 0.35294116, 0.90718508, 1]],
+      colors: [
+        [0, 0.33490568, 0.62105024, 1],
+        [0.55, 0.2971698, 0.64050645, 1],
+        [0.75883, 0.28627455, 0.74474829, 1],
+        [1, 0.35294116, 0.90718508, 1],
+      ],
       alpha: [0, 0.72549021, 1, 0.66666669],
     },
     guide: [0.60784316, 0.48627451, 1, 0.47058824],
@@ -311,11 +317,19 @@ const nativeSlideLineStyles: Record<OurNotesNoteSkin, OurNotesSlideLineStyle> = 
   },
   skin002: {
     normal: {
-      colors: [[0, 0.40784317, 0.93333334, 0.46008569], [0.50001, 0.41176465, 0.93333334, 0.48584169], [1, 0.41176465, 0.93333334, 0.54775292]],
+      colors: [
+        [0, 0.40784317, 0.93333334, 0.46008569],
+        [0.50001, 0.41176465, 0.93333334, 0.48584169],
+        [1, 0.41176465, 0.93333334, 0.54775292],
+      ],
       alpha: [0, 0.43137255, 1, 0.39215687],
     },
     pressed: {
-      colors: [[0, 0.46752, 0.96226, 0.51071], [0.50001, 0.44936, 0.96226, 0.52263], [1, 0.45394, 0.95283, 0.5877]],
+      colors: [
+        [0, 0.46752, 0.96226, 0.51071],
+        [0.50001, 0.44936, 0.96226, 0.52263],
+        [1, 0.45394, 0.95283, 0.5877],
+      ],
       alpha: [0, 0.54901961, 1, 0.54901961],
     },
     guide: [0.42697579, 0.9528302, 0.8797366, 0.35294119],
@@ -331,11 +345,20 @@ const nativeSlideLineStyles: Record<OurNotesNoteSkin, OurNotesSlideLineStyle> = 
   },
   skin003: {
     normal: {
-      colors: [[0, 0.30660379, 0.41371399, 1], [0.55, 0.31523672, 0.49328363, 0.86792451], [1, 0.3037113, 0.53769982, 0.85849059]],
+      colors: [
+        [0, 0.30660379, 0.41371399, 1],
+        [0.55, 0.31523672, 0.49328363, 0.86792451],
+        [1, 0.3037113, 0.53769982, 0.85849059],
+      ],
       alpha: [0.00882, 0.78431374, 1, 0.78431374],
     },
     pressed: {
-      colors: [[0, 0.33490568, 0.62105024, 1], [0.55, 0.2971698, 0.64050645, 1], [0.75883, 0.28627455, 0.74474829, 1], [1, 0.35294116, 0.90718508, 1]],
+      colors: [
+        [0, 0.33490568, 0.62105024, 1],
+        [0.55, 0.2971698, 0.64050645, 1],
+        [0.75883, 0.28627455, 0.74474829, 1],
+        [1, 0.35294116, 0.90718508, 1],
+      ],
       alpha: [0, 0.72549021, 1, 0.66666669],
     },
     guide: [0.19215685, 0.68298382, 1, 0.43137255],
@@ -1208,10 +1231,7 @@ function simpleParticle(
   };
 }
 
-function simpleSprite(
-  prefab: string,
-  baseColor: readonly [number, number, number, number],
-): Effect001SpriteAssetRef {
+function simpleSprite(prefab: string, baseColor: readonly [number, number, number, number]): Effect001SpriteAssetRef {
   return {
     name: "frame",
     metadataUrl: simpleObject(prefab, "SpriteRenderer"),
@@ -1253,14 +1273,28 @@ export const EFFECT001SIMPLE_PREFABS: Readonly<Record<string, Effect001PrefabAss
     animationClipUrl: SIMPLE_TAP_CLIPS.perfect,
     animationClipUrls: SIMPLE_TAP_CLIPS,
     particleSystems: [
-      simpleParticle("note_normal_simple.prefab", "ParticleSystem.asset", "ef_particle_point_center", "circleIcon", [0, -0.53, 0.55], {
-        animationPath: "ef_splash/ef_particle_point_center",
-        shapeWidthOffset: 0.08,
-      }),
-      simpleParticle("note_normal_simple.prefab", "ParticleSystem_2.asset", "ef_particle_point", "circleIcon", [0, -0.53, 0.55], {
-        animationPath: "ef_splash/ef_particle_point",
-        shapeWidthOffset: 0.08,
-      }),
+      simpleParticle(
+        "note_normal_simple.prefab",
+        "ParticleSystem.asset",
+        "ef_particle_point_center",
+        "circleIcon",
+        [0, -0.53, 0.55],
+        {
+          animationPath: "ef_splash/ef_particle_point_center",
+          shapeWidthOffset: 0.08,
+        },
+      ),
+      simpleParticle(
+        "note_normal_simple.prefab",
+        "ParticleSystem_2.asset",
+        "ef_particle_point",
+        "circleIcon",
+        [0, -0.53, 0.55],
+        {
+          animationPath: "ef_splash/ef_particle_point",
+          shapeWidthOffset: 0.08,
+        },
+      ),
       simpleParticle("note_normal_simple.prefab", "ParticleSystem_3.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
         animationPath: "ef_splash/ef_wall_center",
         localScale: [4.9, 1, 1],
@@ -1268,9 +1302,7 @@ export const EFFECT001SIMPLE_PREFABS: Readonly<Record<string, Effect001PrefabAss
       }),
     ],
     sprites: [
-      simpleSprite("note_normal_simple.prefab", [
-        0.0777856633067131, 0.23382169008255005, 0.8679245114326477, 0,
-      ]),
+      simpleSprite("note_normal_simple.prefab", [0.0777856633067131, 0.23382169008255005, 0.8679245114326477, 0]),
     ],
   },
   Slide: {
@@ -1280,14 +1312,28 @@ export const EFFECT001SIMPLE_PREFABS: Readonly<Record<string, Effect001PrefabAss
     animationClipUrl: SIMPLE_SLIDE_CLIPS.perfect,
     animationClipUrls: SIMPLE_SLIDE_CLIPS,
     particleSystems: [
-      simpleParticle("note_slide_simple.prefab", "ParticleSystem.asset", "ef_particle_point", "circleIcon", [0, -0.53, 0.55], {
-        animationPath: "ef_splash/ef_particle_point",
-        shapeWidthOffset: 0.08,
-      }),
-      simpleParticle("note_slide_simple.prefab", "ParticleSystem_2.asset", "ef_particle_point_center", "circleIcon", [0, -0.53, 0.55], {
-        animationPath: "ef_splash/ef_particle_point_center",
-        shapeWidthOffset: 0.08,
-      }),
+      simpleParticle(
+        "note_slide_simple.prefab",
+        "ParticleSystem.asset",
+        "ef_particle_point",
+        "circleIcon",
+        [0, -0.53, 0.55],
+        {
+          animationPath: "ef_splash/ef_particle_point",
+          shapeWidthOffset: 0.08,
+        },
+      ),
+      simpleParticle(
+        "note_slide_simple.prefab",
+        "ParticleSystem_2.asset",
+        "ef_particle_point_center",
+        "circleIcon",
+        [0, -0.53, 0.55],
+        {
+          animationPath: "ef_splash/ef_particle_point_center",
+          shapeWidthOffset: 0.08,
+        },
+      ),
       simpleParticle("note_slide_simple.prefab", "ParticleSystem_3.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
         animationPath: "ef_splash/ef_wall_center",
         localScale: [4.9, 1, 1],
@@ -1295,9 +1341,7 @@ export const EFFECT001SIMPLE_PREFABS: Readonly<Record<string, Effect001PrefabAss
       }),
     ],
     sprites: [
-      simpleSprite("note_slide_simple.prefab", [
-        0.19215686274509805, 0.11372549019607843, 0.9058823529411765, 1,
-      ]),
+      simpleSprite("note_slide_simple.prefab", [0.19215686274509805, 0.11372549019607843, 0.9058823529411765, 1]),
     ],
   },
   Flick: {
@@ -1330,9 +1374,7 @@ export const EFFECT001SIMPLE_PREFABS: Readonly<Record<string, Effect001PrefabAss
       }),
     ],
     sprites: [
-      simpleSprite("note_flick_simple.prefab", [
-        0.6792452931404114, 0.30566415190696716, 0.06728372722864151, 0,
-      ]),
+      simpleSprite("note_flick_simple.prefab", [0.6792452931404114, 0.30566415190696716, 0.06728372722864151, 0]),
     ],
   },
   Left: {
@@ -1353,16 +1395,21 @@ export const EFFECT001SIMPLE_PREFABS: Readonly<Record<string, Effect001PrefabAss
         animationPath: "ef_splash_move/ef_splash",
         widthScaleRange: [0.0820000022649765, 1.5],
       }),
-      simpleParticle("note_flick_left_simple.prefab", "ParticleSystem_3.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
-        animationPath: "ef_splash/ef_wall_center",
-        localScale: [4.9, 1, 1],
-        renderer: "wallMesh",
-      }),
+      simpleParticle(
+        "note_flick_left_simple.prefab",
+        "ParticleSystem_3.asset",
+        "ef_wall_center",
+        "wall",
+        [0, 0, 0.05],
+        {
+          animationPath: "ef_splash/ef_wall_center",
+          localScale: [4.9, 1, 1],
+          renderer: "wallMesh",
+        },
+      ),
     ],
     sprites: [
-      simpleSprite("note_flick_left_simple.prefab", [
-        0.039382338523864746, 0.5566037893295288, 0.14450867474079132, 0,
-      ]),
+      simpleSprite("note_flick_left_simple.prefab", [0.039382338523864746, 0.5566037893295288, 0.14450867474079132, 0]),
     ],
   },
   Right: {
@@ -1381,15 +1428,20 @@ export const EFFECT001SIMPLE_PREFABS: Readonly<Record<string, Effect001PrefabAss
         animationPath: "ef_splash_move/ef_splash",
         widthScaleRange: [0.0820000022649765, 1.5],
       }),
-      simpleParticle("note_flick_right_simple.prefab", "ParticleSystem_2.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
-        animationPath: "ef_splash/ef_wall_center",
-        localScale: [4.9, 1, 1],
-        renderer: "wallMesh",
-      }),
+      simpleParticle(
+        "note_flick_right_simple.prefab",
+        "ParticleSystem_2.asset",
+        "ef_wall_center",
+        "wall",
+        [0, 0, 0.05],
+        {
+          animationPath: "ef_splash/ef_wall_center",
+          localScale: [4.9, 1, 1],
+          renderer: "wallMesh",
+        },
+      ),
     ],
-    sprites: [
-      simpleSprite("note_flick_right_simple.prefab", [1.0, 0.15566039085388184, 0.6591655611991882, 0]),
-    ],
+    sprites: [simpleSprite("note_flick_right_simple.prefab", [1.0, 0.15566039085388184, 0.6591655611991882, 0])],
   },
   // FlickJustEffect slot: the settings asset resolves Just to note_groove_simple.
   Excellent: {
@@ -1399,23 +1451,35 @@ export const EFFECT001SIMPLE_PREFABS: Readonly<Record<string, Effect001PrefabAss
     animationClipUrl: SIMPLE_TAP_CLIPS.perfect,
     animationClipUrls: SIMPLE_TAP_CLIPS,
     particleSystems: [
-      simpleParticle("note_groove_simple.prefab", "ParticleSystem_2.asset", "ef_particle_point", "circleIcon", [0, -0.531000018119812, 0], {
-        animationPath: "ef_splash/ef_particle_point",
-        shapeWidthOffset: -0.019999999552965164,
-      }),
-      simpleParticle("note_groove_simple.prefab", "ParticleSystem_3.asset", "ef_particle_point_center", "circleIcon", [0, -0.5299999713897705, 0], {
-        animationPath: "ef_splash/ef_particle_point_center",
-        shapeWidthOffset: 0.07999999821186066,
-      }),
+      simpleParticle(
+        "note_groove_simple.prefab",
+        "ParticleSystem_2.asset",
+        "ef_particle_point",
+        "circleIcon",
+        [0, -0.531000018119812, 0],
+        {
+          animationPath: "ef_splash/ef_particle_point",
+          shapeWidthOffset: -0.019999999552965164,
+        },
+      ),
+      simpleParticle(
+        "note_groove_simple.prefab",
+        "ParticleSystem_3.asset",
+        "ef_particle_point_center",
+        "circleIcon",
+        [0, -0.5299999713897705, 0],
+        {
+          animationPath: "ef_splash/ef_particle_point_center",
+          shapeWidthOffset: 0.07999999821186066,
+        },
+      ),
       simpleParticle("note_groove_simple.prefab", "ParticleSystem.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
         animationPath: "ef_splash/ef_wall_center",
         localScale: [4.9, 1, 1],
         renderer: "wallMesh",
       }),
     ],
-    sprites: [
-      simpleSprite("note_groove_simple.prefab", [0.5, 0.45834264159202576, 0.030660390853881836, 0]),
-    ],
+    sprites: [simpleSprite("note_groove_simple.prefab", [0.5, 0.45834264159202576, 0.030660390853881836, 0])],
   },
   SlideLoop: {
     id: EFFECT001_PREFAB_IDS.SlideLoop,
@@ -1440,16 +1504,21 @@ export const EFFECT001SIMPLE_PREFABS: Readonly<Record<string, Effect001PrefabAss
         [0, -0.5299999713897705, 0.6499999761581421],
         { animationPath: "ef_slide_loop/ef_particle_point ", shapeWidthOffset: 0.07999999821186066 },
       ),
-      simpleParticle("note_slide_simple_loop.prefab", "ParticleSystem_2.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
-        animationPath: "ef_slide_loop/ef_wall_center",
-        localScale: [4.9, 1, 1],
-        renderer: "wallMesh",
-      }),
+      simpleParticle(
+        "note_slide_simple_loop.prefab",
+        "ParticleSystem_2.asset",
+        "ef_wall_center",
+        "wall",
+        [0, 0, 0.05],
+        {
+          animationPath: "ef_slide_loop/ef_wall_center",
+          localScale: [4.9, 1, 1],
+          renderer: "wallMesh",
+        },
+      ),
     ],
     sprites: [
-      simpleSprite("note_slide_simple_loop.prefab", [
-        0.19215686274509805, 0.11372549019607843, 0.9058823529411765, 1,
-      ]),
+      simpleSprite("note_slide_simple_loop.prefab", [0.19215686274509805, 0.11372549019607843, 0.9058823529411765, 1]),
     ],
   },
   // SlideLoopConnectEffect shares note_slide_simple with SlideEffect in the
@@ -1461,14 +1530,28 @@ export const EFFECT001SIMPLE_PREFABS: Readonly<Record<string, Effect001PrefabAss
     animationClipUrl: SIMPLE_SLIDE_CLIPS.perfect,
     animationClipUrls: SIMPLE_SLIDE_CLIPS,
     particleSystems: [
-      simpleParticle("note_slide_simple.prefab", "ParticleSystem.asset", "ef_particle_point", "circleIcon", [0, -0.53, 0.55], {
-        animationPath: "ef_splash/ef_particle_point",
-        shapeWidthOffset: 0.08,
-      }),
-      simpleParticle("note_slide_simple.prefab", "ParticleSystem_2.asset", "ef_particle_point_center", "circleIcon", [0, -0.53, 0.55], {
-        animationPath: "ef_splash/ef_particle_point_center",
-        shapeWidthOffset: 0.08,
-      }),
+      simpleParticle(
+        "note_slide_simple.prefab",
+        "ParticleSystem.asset",
+        "ef_particle_point",
+        "circleIcon",
+        [0, -0.53, 0.55],
+        {
+          animationPath: "ef_splash/ef_particle_point",
+          shapeWidthOffset: 0.08,
+        },
+      ),
+      simpleParticle(
+        "note_slide_simple.prefab",
+        "ParticleSystem_2.asset",
+        "ef_particle_point_center",
+        "circleIcon",
+        [0, -0.53, 0.55],
+        {
+          animationPath: "ef_splash/ef_particle_point_center",
+          shapeWidthOffset: 0.08,
+        },
+      ),
       simpleParticle("note_slide_simple.prefab", "ParticleSystem_3.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
         animationPath: "ef_splash/ef_wall_center",
         localScale: [4.9, 1, 1],
@@ -1476,71 +1559,17 @@ export const EFFECT001SIMPLE_PREFABS: Readonly<Record<string, Effect001PrefabAss
       }),
     ],
     sprites: [
-      simpleSprite("note_slide_simple.prefab", [
-        0.19215686274509805, 0.11372549019607843, 0.9058823529411765, 1,
-      ]),
+      simpleSprite("note_slide_simple.prefab", [0.19215686274509805, 0.11372549019607843, 0.9058823529411765, 1]),
     ],
   },
 };
 
-const sprite = (name: string, directory: string): SpriteMetadataRef => ({
-  name,
-  metadataUrl: unityObject(`${NOTE_SOURCE}/${directory}/${name}.png`, "Sprite"),
-});
-
-function sideSprites(prefix: string, directory: string): SpriteMetadataRef[] {
-  const values: Array<string | number> = ["L", "R", -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6];
-  return values.map((value) => {
-    const suffix = String(value);
-    const name = `${prefix}_${suffix}`;
-    return sprite(name, directory);
-  });
-}
-
-const noteSprites: SpriteMetadataRef[] = [
-  ...sideSprites("notes_tap_side", "tap"),
-  ...sideSprites("notes_flick_side", "flick"),
-  ...sideSprites("notes_flick_left_side", "flick_left"),
-  ...sideSprites("notes_flick_right_side", "flick_right"),
-  ...sideSprites("notes_slide_side", "slide"),
-  ...sideSprites("notes_slide_end_side", "slide_end"),
-  ...sideSprites("notes_slide_connection_side", "slide_connet"),
-  ...sideSprites("notes_trace_side", "trace"),
-  sprite("note_trace_3", "trace"),
-  sprite("slide_connection_icon", "slide_connet"),
-  sprite("tap_decoration", "tap"),
-  sprite("flick_decoration", "flick"),
-  sprite("slide_decoration", "slide"),
-  sprite("flick_left_decoration", "flick_left"),
-  sprite("flick_right_decoration", "flick_right"),
-  sprite("notes_flick_arrow_upper_S", "flick"),
-  sprite("notes_flick_arrow_upper_M", "flick"),
-  sprite("notes_flick_arrow_upper_L", "flick"),
-  sprite("notes_flick_arrow_upper_LL", "flick"),
-  ...Array.from({ length: 8 }, (_, index) => {
-    const suffix = String(index + 1).padStart(2, "0");
-    return sprite(`notes_flick_arrow_left_${suffix}`, "flick_left");
-  }),
-  ...Array.from({ length: 8 }, (_, index) => {
-    const suffix = String(index + 1).padStart(2, "0");
-    return sprite(`notes_flick_arrow_right_${suffix}`, "flick_right");
-  }),
-];
-
 function noteSkinSprites(skin: OurNotesNoteSkin): SpriteMetadataRef[] {
-  const sprites = noteSprites.filter(
-    (entry) => skin !== "skin002" || entry.name !== "notes_flick_arrow_right_04",
-  );
-  const upper =
-    skin === "skin003"
-      ? Array.from({ length: 8 }, (_, index) => sprite(`notes_flick_arrow_upper_${String(index + 1).padStart(2, "0")}`, "flick"))
-      : [];
-  return [...sprites, ...upper]
-    .filter((entry) => skin !== "skin003" || !/^notes_flick_arrow_upper_(?:S|M|L|LL)$/.test(entry.name))
-    .map((entry) => ({
-      ...entry,
-      metadataUrl: entry.metadataUrl.replaceAll("/skin001/", `/${skin}/`),
-    }));
+  return Object.entries(OUR_NOTES_BUNDLED_NOTE_ATLASES[skin].spriteMetadata).map(([name, metadata]) => ({
+    name,
+    metadataUrl: "",
+    metadata,
+  }));
 }
 
 /**
@@ -1549,6 +1578,7 @@ function noteSkinSprites(skin: OurNotesNoteSkin): SpriteMetadataRef[] {
  */
 const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): OurNotesAssetManifest => {
   const noteSkin = runtimeMedia.noteSkin ?? "skin001";
+  const bundledNoteAtlas = OUR_NOTES_BUNDLED_NOTE_ATLASES[noteSkin];
   const noteEffectSkin = runtimeMedia.noteEffectSkin ?? "effect001";
   return {
     id: `our-notes-${noteSkin}-${noteEffectSkin}`,
@@ -1560,8 +1590,9 @@ const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): 
     },
     noteAtlas: {
       id: noteSkin,
-      textureUrl: runtimeMedia.noteAtlasTextureUrl,
-      atlasMetadataUrl: unityObject(ourNotesNoteAtlasSource(noteSkin), "SpriteAtlas"),
+      textureUrl: bundledNoteAtlas.textureUrl,
+      atlasMetadataUrl: "",
+      atlasMetadata: bundledNoteAtlas.atlasMetadata,
       sprites: noteSkinSprites(noteSkin),
     },
     slideLineStyle: nativeSlideLineStyles[noteSkin],
@@ -1594,105 +1625,108 @@ const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): 
       centerPillarTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_pillar_center.png`),
       centerPillar02TextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_pillar_center02.png`),
       circleIconTextureUrl: sourceAsset(`${EFFECT_COMMON_CURRENT_SOURCE}/Texture/ef_circle_icon.png`),
-    slideLineTextureUrl: sourceAsset(`${NOTE_SOURCE}/slideline_purple2.png`),
-    laneEffects: {
-      inVain: {
-        textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
-        particleSystemMetadataUrl: unityObject(
-          `${LANE_EFFECT_SOURCE}/lane_tap_blank_miss_view.prefab`,
-          "ParticleSystem",
-          1,
-        ),
-        lifetime: 0.44999998807907104 / 2,
-      },
-      normal: {
-        textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
-        particleSystemMetadataUrl: unityObject(
-          `${LANE_EFFECT_SOURCE}/lane_tap_normal_view.prefab`,
-          "ParticleSystem",
-          1,
-        ),
-        lifetime: 0.44999998807907104 / 2,
-      },
-      slide: {
-        textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
-        particleSystemMetadataUrl: unityObject(`${LANE_EFFECT_SOURCE}/lane_tap_slide_view.prefab`, "ParticleSystem"),
-        lifetime: 0.44999998807907104 / 2,
-      },
-      flick: {
-        textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
-        particleSystemMetadataUrl: unityObject(`${LANE_EFFECT_SOURCE}/lane_tap_flick_view.prefab`, "ParticleSystem", 1),
-        lifetime: 0.44999998807907104 / 2,
-      },
-      flickLeft: {
-        textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
-        particleSystemMetadataUrl: unityObject(
-          `${LANE_EFFECT_SOURCE}/lane_tap_flick_left_view.prefab`,
-          "ParticleSystem",
-        ),
-        lifetime: 0.44999998807907104 / 2,
-      },
-      flickRight: {
-        textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
-        particleSystemMetadataUrl: unityObject(
-          `${LANE_EFFECT_SOURCE}/lane_tap_flick_right_view.prefab`,
-          "ParticleSystem",
-          1,
-        ),
-        lifetime: 0.44999998807907104 / 2,
-      },
-    },
-    effect001RootUrl: sourceAsset(
-      `${noteEffectSkin === "effect001Simple" ? EFFECT001SIMPLE_SOURCE : EFFECT001_SOURCE}/LiveNoteEffectAssetSettings.asset`,
-    ),
-    effect001Prefabs:
-      noteEffectSkin === "effect001Simple" ? EFFECT001SIMPLE_PREFABS : EFFECT001_PREFABS,
-    effect001PrefabIds: EFFECT001_PREFAB_IDS,
-  },
-  hud: runtimeMedia.hud,
-  ...(runtimeMedia.fontAtlasTextureUrl
-    ? {
-        tmpSdfFont: {
-          atlasTextureUrl: runtimeMedia.fontAtlasTextureUrl,
-          metadataUrl: unityObject(HUD_FONT_SOURCE, "MonoBehaviour"),
+      slideLineTextureUrl: sourceAsset(`${NOTE_SOURCE}/slideline_purple2.png`),
+      laneEffects: {
+        inVain: {
+          textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
+          particleSystemMetadataUrl: unityObject(
+            `${LANE_EFFECT_SOURCE}/lane_tap_blank_miss_view.prefab`,
+            "ParticleSystem",
+            1,
+          ),
+          lifetime: 0.44999998807907104 / 2,
         },
-      }
-    : {}),
-  // MasterLiveNoteSeGroup=1. These WAV files are produced by the CRI processing
-  // stage from each CriSerializedBytesAssetImpl. default_long is a Type=0 polyphonic CRI
-  // sequence, not one selectable subsong, so both Track rows are layered.
-  noteSounds: {
-    good: noteSound("default_good"),
-    great: noteSound("default_great"),
-    perfect: noteSound("default_perfect"),
-    flick: noteSound("default_flick"),
-    flickDirection: noteSound("default_flick_side"),
-    slide: [
-      { url: noteSound("default_long_1"), gain: 0.85 },
-      { url: noteSound("default_long_2"), gain: 0.75 },
-    ],
-    just: noteSound("just_01"),
-    trace: noteSound("default_trace"),
-  },
-  palette: {
-    lane: "#07162c",
-    laneLine: "#7283aa",
-    outsideLine: "#eefcff",
-    judgementLine: "#d864ff",
-    tap: "#78b5ff",
-    flick: "#ff7298",
-    flickLeft: "#32df79",
-    flickRight: "#ff668b",
-    slide: "#b66dff",
-    trace: "#718dff",
-    critical: "#ffc247",
-    perfect: "#f4fff2",
-    great: "#ffea72",
-    good: "#79e9a6",
-    bad: "#ff9b58",
-    miss: "#d6d8e5",
-  },
-  tiltThresholds: [0, 2, 4, 6, 8, 10, 12].map((distance, value) => ({ distance, value })),
+        normal: {
+          textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
+          particleSystemMetadataUrl: unityObject(
+            `${LANE_EFFECT_SOURCE}/lane_tap_normal_view.prefab`,
+            "ParticleSystem",
+            1,
+          ),
+          lifetime: 0.44999998807907104 / 2,
+        },
+        slide: {
+          textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
+          particleSystemMetadataUrl: unityObject(`${LANE_EFFECT_SOURCE}/lane_tap_slide_view.prefab`, "ParticleSystem"),
+          lifetime: 0.44999998807907104 / 2,
+        },
+        flick: {
+          textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
+          particleSystemMetadataUrl: unityObject(
+            `${LANE_EFFECT_SOURCE}/lane_tap_flick_view.prefab`,
+            "ParticleSystem",
+            1,
+          ),
+          lifetime: 0.44999998807907104 / 2,
+        },
+        flickLeft: {
+          textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
+          particleSystemMetadataUrl: unityObject(
+            `${LANE_EFFECT_SOURCE}/lane_tap_flick_left_view.prefab`,
+            "ParticleSystem",
+          ),
+          lifetime: 0.44999998807907104 / 2,
+        },
+        flickRight: {
+          textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
+          particleSystemMetadataUrl: unityObject(
+            `${LANE_EFFECT_SOURCE}/lane_tap_flick_right_view.prefab`,
+            "ParticleSystem",
+            1,
+          ),
+          lifetime: 0.44999998807907104 / 2,
+        },
+      },
+      effect001RootUrl: sourceAsset(
+        `${noteEffectSkin === "effect001Simple" ? EFFECT001SIMPLE_SOURCE : EFFECT001_SOURCE}/LiveNoteEffectAssetSettings.asset`,
+      ),
+      effect001Prefabs: noteEffectSkin === "effect001Simple" ? EFFECT001SIMPLE_PREFABS : EFFECT001_PREFABS,
+      effect001PrefabIds: EFFECT001_PREFAB_IDS,
+    },
+    hud: runtimeMedia.hud,
+    ...(runtimeMedia.fontAtlasTextureUrl
+      ? {
+          tmpSdfFont: {
+            atlasTextureUrl: runtimeMedia.fontAtlasTextureUrl,
+            metadataUrl: unityObject(HUD_FONT_SOURCE, "MonoBehaviour"),
+          },
+        }
+      : {}),
+    // MasterLiveNoteSeGroup=1. These WAV files are produced by the CRI processing
+    // stage from each CriSerializedBytesAssetImpl. default_long is a Type=0 polyphonic CRI
+    // sequence, not one selectable subsong, so both Track rows are layered.
+    noteSounds: {
+      good: noteSound("default_good"),
+      great: noteSound("default_great"),
+      perfect: noteSound("default_perfect"),
+      flick: noteSound("default_flick"),
+      flickDirection: noteSound("default_flick_side"),
+      slide: [
+        { url: noteSound("default_long_1"), gain: 0.85 },
+        { url: noteSound("default_long_2"), gain: 0.75 },
+      ],
+      just: noteSound("just_01"),
+      trace: noteSound("default_trace"),
+    },
+    palette: {
+      lane: "#07162c",
+      laneLine: "#7283aa",
+      outsideLine: "#eefcff",
+      judgementLine: "#d864ff",
+      tap: "#78b5ff",
+      flick: "#ff7298",
+      flickLeft: "#32df79",
+      flickRight: "#ff668b",
+      slide: "#b66dff",
+      trace: "#718dff",
+      critical: "#ffc247",
+      perfect: "#f4fff2",
+      great: "#ffea72",
+      good: "#79e9a6",
+      bad: "#ff9b58",
+      miss: "#d6d8e5",
+    },
+    tiltThresholds: [0, 2, 4, 6, 8, 10, 12].map((distance, value) => ({ distance, value })),
   };
 };
 
@@ -1709,7 +1743,6 @@ export function ourNotesAssetManifestForRelease(
     `/assets/${encodedReleaseServer}/Packages/`,
   ] as const;
   const runtimeUrls = [
-    runtimeMedia.noteAtlasTextureUrl,
     ...(runtimeMedia.fontAtlasTextureUrl ? [runtimeMedia.fontAtlasTextureUrl] : []),
     ...Object.values(runtimeMedia.hud.judgementImages),
     runtimeMedia.hud.comboLabelUrl,
@@ -1741,7 +1774,6 @@ export function ourNotesAssetManifestForRelease(
   const manifest = JSON.parse(serialized) as OurNotesAssetManifest;
   return {
     ...manifest,
-    noteAtlas: { ...manifest.noteAtlas, textureUrl: runtimeMedia.noteAtlasTextureUrl },
     hud: runtimeMedia.hud,
   };
 }
