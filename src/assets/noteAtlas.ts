@@ -1,6 +1,6 @@
-import skin001Archive from "./note-skins/skin001.json";
-import skin002Archive from "./note-skins/skin002.json";
-import skin003Archive from "./note-skins/skin003.json";
+import skin001Archive from "./note-skins/skin001.json" with { type: "json" };
+import skin002Archive from "./note-skins/skin002.json" with { type: "json" };
+import skin003Archive from "./note-skins/skin003.json" with { type: "json" };
 import { noteTextureUrl } from "./noteTextures.js";
 
 export type BundledNoteSkin = "skin001" | "skin002" | "skin003";

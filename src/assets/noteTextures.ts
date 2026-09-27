@@ -1,4 +1,4 @@
-import type { BundledNoteSkin } from "./noteAtlas";
+import type { BundledNoteSkin } from "./noteAtlas.js";
 
 export function noteTextureUrl(skin: BundledNoteSkin): string {
   switch (skin) {

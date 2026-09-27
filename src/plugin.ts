@@ -1,9 +1,9 @@
 import { defineCassiopeiaPlugin, defineCassiopeiaService } from "@haneoka/cassiopeia/plugin";
-import { buildChart } from "./core/chart";
-import { parseScore } from "./core/parser";
-import { RenderFrameBuilder } from "./adapter/renderFrame";
-import { createOurNotesAssetManifest } from "./assets/manifest";
-import { HapticFeedback } from "./presentation/HapticFeedback";
+import { buildChart } from "./core/chart.js";
+import { parseScore } from "./core/parser.js";
+import { RenderFrameBuilder } from "./adapter/renderFrame.js";
+import { createOurNotesAssetManifest } from "./assets/manifest.js";
+import { HapticFeedback } from "./presentation/HapticFeedback.js";
 
 export const OUR_NOTES_RULES = defineCassiopeiaService<{
   parse: (input: unknown) => ReturnType<typeof buildChart>;

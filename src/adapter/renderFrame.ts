@@ -8,7 +8,7 @@ import type {
   LaneInputEffectEvent,
   SessionSnapshot,
 } from "@haneoka/cassiopeia";
-import { isRenderLaneEffectKind } from "../render/types";
+import { isRenderLaneEffectKind } from "../render/types.js";
 import type {
   RenderDirection,
   RenderFrame,
@@ -21,7 +21,7 @@ import type {
   RenderParticleEffect,
   RenderPathPoint,
   RenderSimultaneousLine,
-} from "../render/types";
+} from "../render/types.js";
 
 export interface RenderSettings {
   noteSpeed: number;
@@ -128,6 +128,8 @@ interface PreparedLine {
   points: ReadonlyArray<PreparedHoldPoint>;
   realStartTimeMs: number;
   realEndTimeMs: number;
+  inverseDuration: number;
+  minimumWidth: number;
   critical: boolean;
   /** Monotonic playback cursors; adjusted backwards safely after option changes. */
   pointStartCursor: number;
@@ -629,6 +631,11 @@ export class RenderFrameBuilder {
         points,
         realStartTimeMs: sourceAuthored[0]?.timeMs ?? 0,
         realEndTimeMs: sourceAuthored[sourceAuthored.length - 1]?.timeMs ?? 0,
+        inverseDuration:
+          sourceAuthored.length > 1 && sourceAuthored.at(-1)!.timeMs > sourceAuthored[0]!.timeMs
+            ? Math.fround(1 / Math.fround(sourceAuthored.at(-1)!.timeMs - sourceAuthored[0]!.timeMs))
+            : 0,
+        minimumWidth: sourceAuthored.reduce((width, note) => Math.min(width, note.size), Infinity),
         critical: line.critical,
         pointStartCursor: 0,
         pointEndCursor: 0,
@@ -870,11 +877,20 @@ export class RenderFrameBuilder {
         visualTimeMs,
         inverseViewTimeMs,
         mirror,
+        line,
       );
       line.pointStartCursor = adjustUpperBoundCursor(line.points, visibleStartTime, line.pointStartCursor);
       line.pointEndCursor = adjustLowerBoundCursor(line.points, visibleEndTime, line.pointEndCursor);
       for (let pointIndex = line.pointStartCursor; pointIndex < line.pointEndCursor; pointIndex++) {
-        this.appendHoldPoint(points, pointPool, line.points[pointIndex]!, visualTimeMs, inverseViewTimeMs, mirror);
+        this.appendHoldPoint(
+          points,
+          pointPool,
+          line.points[pointIndex]!,
+          visualTimeMs,
+          inverseViewTimeMs,
+          mirror,
+          line,
+        );
       }
       this.appendHoldPoint(
         points,
@@ -883,9 +899,11 @@ export class RenderFrameBuilder {
         visualTimeMs,
         inverseViewTimeMs,
         mirror,
+        line,
       );
       if (points.length < 2) continue;
       output.id = line.id;
+      output.minimumWidth = line.minimumWidth;
       output.kind = line.kind === "guide" ? "guide" : "slide";
       output.active =
         line.kind !== "guide" &&
@@ -1203,6 +1221,7 @@ export class RenderFrameBuilder {
     timeMs: number,
     inverseViewTimeMs: number,
     mirror: boolean,
+    line: PreparedLine,
   ): void {
     const index = points.length;
     const output = pool
@@ -1211,6 +1230,8 @@ export class RenderFrameBuilder {
     output.lane = mirror ? mirrorLane(point.pos, point.size) : point.pos;
     output.width = point.size;
     output.approach = (point.timeMs - timeMs) * inverseViewTimeMs;
+    const authoredTimeMs = Math.floor(this.visualTimeMap.toTimeMs(point.timeMs));
+    output.lineProgress = Math.fround(Math.fround(authoredTimeMs - line.realStartTimeMs) * line.inverseDuration);
     points.push(output);
   }
 

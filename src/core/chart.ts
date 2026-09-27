@@ -7,7 +7,7 @@ import {
 } from "@haneoka/cassiopeia";
 import { applyLineEase, laneToX, sizeToWidth } from "@haneoka/cassiopeia";
 import { PPQ, TickConverter, type BarPosition } from "@haneoka/cassiopeia";
-import { buildChartTimeline } from "./timeline";
+import { buildChartTimeline } from "./timeline.js";
 import type { ChartDocument, ChartLine, ChartNote, SsRawNote, SsRoot } from "@haneoka/cassiopeia";
 
 type Shape = Pick<ChartNote, "pos" | "size">;

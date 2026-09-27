@@ -1,15 +1,7 @@
-import type { OurNotesAssetManifest, TmpSdfFontAssetManifest } from "../assets/manifest";
+import type { OurNotesAssetManifest, TmpSdfFontAssetManifest } from "../assets/manifest.js";
 
 export type RenderNoteKind =
-  | "tap"
-  | "flick"
-  | "flick-left"
-  | "flick-right"
-  | "slide-start"
-  | "slide-node"
-  | "slide-end"
-  | "trace"
-  | "guide";
+  "tap" | "flick" | "flick-left" | "flick-right" | "slide-start" | "slide-node" | "slide-end" | "trace" | "guide";
 
 export type RenderDirection = "none" | "left" | "right" | "up";
 
@@ -48,6 +40,8 @@ export type RenderHoldKind = "long" | "slide" | "trace" | "guide";
 export type RenderEasing = "linear" | "in" | "out" | "in-out" | number;
 
 export interface RenderPathPoint {
+  /** Authored row time normalized against the complete line, independent of viewport clipping. */
+  lineProgress?: number;
   lane: number;
   width: number;
   approach: number;
@@ -60,6 +54,9 @@ export interface RenderPathPoint {
 }
 
 export interface RenderHold {
+  /** Smallest authored width over the entire line, before visible clipping. */
+  minimumWidth?: number;
+  missed?: boolean;
   id: string | number;
   kind: RenderHoldKind;
   points: ReadonlyArray<RenderPathPoint>;

@@ -5,8 +5,8 @@
  * a deterministic runtime projection of the immutable bundle object archive.
  */
 
-import { unityStringHash } from "./unityHash";
-import { OUR_NOTES_BUNDLED_NOTE_ATLASES } from "./noteAtlas";
+import { unityStringHash } from "./unityHash.js";
+import { OUR_NOTES_BUNDLED_NOTE_ATLASES } from "./noteAtlas.js";
 
 export interface SpriteMetadataRef {
   /** Unity Sprite.m_Name. */
@@ -43,10 +43,10 @@ export interface ParticleAssetManifest {
   centerPillar02TextureUrl: string;
   /** effect001Simple note_point_simple material texture (ef_circle_icon). */
   circleIconTextureUrl: string;
-  slideLineTextureUrl: string;
+  /** Omitted when the native material uses its default white texture. */
+  slideLineTextureUrl?: string;
   /** Layer-25 LiveLaneEffectView assets, separate from HDR note effects. */
   laneEffects: Readonly<Record<LaneEffectAssetKey, LaneEffectParticleAssetRef>>;
-  effect001RootUrl: string;
   effect001Prefabs: Readonly<Record<string, Effect001PrefabAssetRef>>;
   /** LiveNoteEffectAssetSettings prefab slots. */
   effect001PrefabIds: typeof EFFECT001_PREFAB_IDS;
@@ -57,12 +57,7 @@ export interface OurNotesSlideLineGradient {
   readonly alpha: readonly [number, number, number, number];
 }
 
-/**
- * Live/Unlit/SlideLine glow block, copied from each skin bundle's
- * slide_line_mat serialized floats. The compiled shader bytecode is not
- * text-extractable; the renderer combines these values into a symmetric
- * across-width band.
- */
+/** Serialized Live/Unlit/SlideLine material parameters. */
 export interface OurNotesSlideLineGlow {
   readonly color: readonly [number, number, number, number];
   readonly intensity: number;
@@ -74,6 +69,9 @@ export interface OurNotesSlideLineGlow {
 }
 
 export interface OurNotesSlideLineStyle {
+  readonly disabled: OurNotesSlideLineGradient;
+  readonly widthScale: number;
+  readonly glowRangeScale: number;
   readonly normal: OurNotesSlideLineGradient;
   readonly pressed: OurNotesSlideLineGradient;
   readonly guide: readonly [number, number, number, number];
@@ -234,6 +232,7 @@ export interface OurNotesAssetManifest {
     noteSkin: OurNotesNoteSkin;
     laneSkin: "skin001";
     noteEffectSkin: OurNotesNoteEffectSkin;
+    authoredProfile: OurNotesAuthoredEffectProfile;
   };
   noteAtlas: SpriteAtlasManifest;
   /** Present only for skins whose flick arrows carry authored gradient settings. */
@@ -256,6 +255,8 @@ export interface OurNotesRuntimeMediaManifest {
   noteSkin?: OurNotesNoteSkin;
   /** Selected from the note effect skins present in the active release. */
   noteEffectSkin?: OurNotesNoteEffectSkin;
+  /** Native ILiveResourceLoadParameter.CurrentQuality; quality 2 selects Light for effect001. */
+  currentQuality?: number;
   fontAtlasTextureUrl?: string;
   hud: HudAssetManifest;
 }
@@ -271,6 +272,15 @@ export const OUR_NOTES_NOTE_SKIN_NAMES: Readonly<Record<OurNotesNoteSkin, Readon
 };
 
 export type OurNotesNoteEffectSkin = "effect001" | "effect001Simple";
+
+/** Native LiveNoteEffectAssetSettings profile, kept separate from user skin selection. */
+export type OurNotesAuthoredEffectProfile = "full" | "light" | "simple";
+
+export const OUR_NOTES_AUTHORED_EFFECT_PROFILES: readonly OurNotesAuthoredEffectProfile[] = [
+  "full",
+  "light",
+  "simple",
+];
 
 export const OUR_NOTES_NOTE_EFFECT_SKINS: readonly OurNotesNoteEffectSkin[] = ["effect001", "effect001Simple"];
 
@@ -317,93 +327,325 @@ export function ourNotesNoteAtlasSource(skin: OurNotesNoteSkin): string {
   return `Assets/AddressableResources/Live/Note/${skin}/${skin}.spriteatlasv2`;
 }
 
-const nativeSlideLineStyles: Record<OurNotesNoteSkin, OurNotesSlideLineStyle> = {
-  skin001: {
-    normal: {
-      colors: [
-        [0, 0.30660379, 0.41371399, 1],
-        [0.55, 0.31523672, 0.49328363, 0.86792451],
-        [1, 0.3037113, 0.53769982, 0.85849059],
+export const OUR_NOTES_SLIDE_LINE_STYLES: Readonly<Record<OurNotesNoteSkin, OurNotesSlideLineStyle>> = {
+  "skin001": {
+    "disabled": {
+      "colors": [
+        [
+          0.0,
+          0.16862745583057404,
+          0.23137255012989044,
+          0.7058823704719543
+        ],
+        [
+          1.0,
+          0.20392157137393951,
+          0.25882354378700256,
+          0.6705882549285889
+        ]
       ],
-      alpha: [0.00882, 0.78431374, 1, 0.78431374],
+      "alpha": [
+        0.0,
+        0.8235294222831726,
+        1.0,
+        0.8235294222831726
+      ]
     },
-    pressed: {
-      colors: [
-        [0, 0.33490568, 0.62105024, 1],
-        [0.55, 0.2971698, 0.64050645, 1],
-        [0.75883, 0.28627455, 0.74474829, 1],
-        [1, 0.35294116, 0.90718508, 1],
+    "normal": {
+      "colors": [
+        [
+          0.0,
+          0.3066037893295288,
+          0.4137139916419983,
+          1.0
+        ],
+        [
+          0.5499961852445259,
+          0.3152367174625397,
+          0.49328362941741943,
+          0.8679245114326477
+        ],
+        [
+          1.0,
+          0.30371129512786865,
+          0.537699818611145,
+          0.8584905862808228
+        ]
       ],
-      alpha: [0, 0.72549021, 1, 0.66666669],
+      "alpha": [
+        0.008819714656290532,
+        0.7843137383460999,
+        1.0,
+        0.7843137383460999
+      ]
     },
-    guide: [0.60784316, 0.48627451, 1, 0.47058824],
-    glow: {
-      color: [0.1367925, 0.8075257, 1, 1],
-      intensity: 0.5,
-      falloff: 2.7,
-      width: 1,
-      disabledScale: 0.4,
-      enabledScale: 0.28,
-      pressedScale: 0.87,
+    "pressed": {
+      "colors": [
+        [
+          0.0,
+          0.3349056839942932,
+          0.621050238609314,
+          1.0
+        ],
+        [
+          0.5499961852445259,
+          0.2971698045730591,
+          0.6405064463615417,
+          1.0
+        ],
+        [
+          0.758831158922713,
+          0.2862745523452759,
+          0.7447482943534851,
+          1.0
+        ],
+        [
+          1.0,
+          0.3529411554336548,
+          0.9071850776672363,
+          1.0
+        ]
+      ],
+      "alpha": [
+        0.0,
+        0.7254902124404907,
+        1.0,
+        0.6666666865348816
+      ]
     },
+    "widthScale": 0.8999999761581421,
+    "glowRangeScale": 2.5,
+    "guide": [
+      0.60784316,
+      0.48627451,
+      1,
+      0.47058824
+    ],
+    "glow": {
+      "color": [
+        0.13679248094558716,
+        0.8075256943702698,
+        1.0,
+        1.0
+      ],
+      "intensity": 0.5,
+      "falloff": 2.700000047683716,
+      "width": 1.0,
+      "disabledScale": 0.4000000059604645,
+      "enabledScale": 0.2800000011920929,
+      "pressedScale": 0.8700000047683716
+    }
   },
-  skin002: {
-    normal: {
-      colors: [
-        [0, 0.40784317, 0.93333334, 0.46008569],
-        [0.50001, 0.41176465, 0.93333334, 0.48584169],
-        [1, 0.41176465, 0.93333334, 0.54775292],
+  "skin002": {
+    "disabled": {
+      "colors": [
+        [
+          0.0,
+          0.1809362918138504,
+          0.35849058628082275,
+          0.21999824047088623
+        ],
+        [
+          1.0,
+          0.18431372940540314,
+          0.3607843220233917,
+          0.2235294133424759
+        ]
       ],
-      alpha: [0, 0.43137255, 1, 0.39215687],
+      "alpha": [
+        0.0,
+        0.5490196347236633,
+        0.9941252765697719,
+        0.9019607901573181
+      ]
     },
-    pressed: {
-      colors: [
-        [0, 0.46752, 0.96226, 0.51071],
-        [0.50001, 0.44936, 0.96226, 0.52263],
-        [1, 0.45394, 0.95283, 0.5877],
+    "normal": {
+      "colors": [
+        [
+          0.0,
+          0.4078431725502014,
+          0.9333333373069763,
+          0.4600856900215149
+        ],
+        [
+          0.5000076295109483,
+          0.41176465153694153,
+          0.9333333373069763,
+          0.48584169149398804
+        ],
+        [
+          1.0,
+          0.41176465153694153,
+          0.9333333373069763,
+          0.5477529168128967
+        ]
       ],
-      alpha: [0, 0.54901961, 1, 0.54901961],
+      "alpha": [
+        0.0,
+        0.4313725531101227,
+        1.0,
+        0.3921568691730499
+      ]
     },
-    guide: [0.42697579, 0.9528302, 0.8797366, 0.35294119],
-    glow: {
-      color: [0.1619793, 0.9811321, 0.2226573, 1],
-      intensity: 0.9,
-      falloff: 4.3499999,
-      width: 0.87,
-      disabledScale: 0.1,
-      enabledScale: 0.4,
-      pressedScale: 0.7,
+    "pressed": {
+      "colors": [
+        [
+          0.0,
+          0.46751517057418823,
+          0.9622641801834106,
+          0.5107074975967407
+        ],
+        [
+          0.5000076295109483,
+          0.4493592083454132,
+          0.9622641801834106,
+          0.5226312875747681
+        ],
+        [
+          1.0,
+          0.4539426863193512,
+          0.9528301954269409,
+          0.5877023935317993
+        ]
+      ],
+      "alpha": [
+        0.0,
+        0.5490196347236633,
+        1.0,
+        0.5490196347236633
+      ]
     },
+    "widthScale": 0.8999999761581421,
+    "glowRangeScale": 2.0,
+    "guide": [
+      0.42697579,
+      0.9528302,
+      0.8797366,
+      0.35294119
+    ],
+    "glow": {
+      "color": [
+        0.1619793325662613,
+        0.9811320900917053,
+        0.22265727818012238,
+        1.0
+      ],
+      "intensity": 0.8999999761581421,
+      "falloff": 4.349999904632568,
+      "width": 0.8700000047683716,
+      "disabledScale": 0.10000000149011612,
+      "enabledScale": 0.4000000059604645,
+      "pressedScale": 0.699999988079071
+    }
   },
-  skin003: {
-    normal: {
-      colors: [
-        [0, 0.30660379, 0.41371399, 1],
-        [0.55, 0.31523672, 0.49328363, 0.86792451],
-        [1, 0.3037113, 0.53769982, 0.85849059],
+  "skin003": {
+    "disabled": {
+      "colors": [
+        [
+          0.0,
+          0.16862745583057404,
+          0.23137255012989044,
+          0.7058823704719543
+        ],
+        [
+          1.0,
+          0.20392157137393951,
+          0.25882354378700256,
+          0.6705882549285889
+        ]
       ],
-      alpha: [0.00882, 0.78431374, 1, 0.78431374],
+      "alpha": [
+        0.0,
+        0.8235294222831726,
+        1.0,
+        0.8235294222831726
+      ]
     },
-    pressed: {
-      colors: [
-        [0, 0.33490568, 0.62105024, 1],
-        [0.55, 0.2971698, 0.64050645, 1],
-        [0.75883, 0.28627455, 0.74474829, 1],
-        [1, 0.35294116, 0.90718508, 1],
+    "normal": {
+      "colors": [
+        [
+          0.0,
+          0.3066037893295288,
+          0.4137139916419983,
+          1.0
+        ],
+        [
+          0.5499961852445259,
+          0.3152367174625397,
+          0.49328362941741943,
+          0.8679245114326477
+        ],
+        [
+          1.0,
+          0.30371129512786865,
+          0.537699818611145,
+          0.8584905862808228
+        ]
       ],
-      alpha: [0, 0.72549021, 1, 0.66666669],
+      "alpha": [
+        0.008819714656290532,
+        0.7843137383460999,
+        1.0,
+        0.7843137383460999
+      ]
     },
-    guide: [0.19215685, 0.68298382, 1, 0.43137255],
-    glow: {
-      color: [0.1367925, 0.8075257, 1, 1],
-      intensity: 0.5,
-      falloff: 2.7,
-      width: 1,
-      disabledScale: 0.4,
-      enabledScale: 0.28,
-      pressedScale: 0.87,
+    "pressed": {
+      "colors": [
+        [
+          0.0,
+          0.3349056839942932,
+          0.621050238609314,
+          1.0
+        ],
+        [
+          0.5499961852445259,
+          0.2971698045730591,
+          0.6405064463615417,
+          1.0
+        ],
+        [
+          0.758831158922713,
+          0.2862745523452759,
+          0.7447482943534851,
+          1.0
+        ],
+        [
+          1.0,
+          0.3529411554336548,
+          0.9071850776672363,
+          1.0
+        ]
+      ],
+      "alpha": [
+        0.0,
+        0.7254902124404907,
+        1.0,
+        0.6666666865348816
+      ]
     },
-  },
+    "widthScale": 0.8999999761581421,
+    "glowRangeScale": 2.5,
+    "guide": [
+      0.19215685,
+      0.68298382,
+      1,
+      0.43137255
+    ],
+    "glow": {
+      "color": [
+        0.13679248094558716,
+        0.8075256943702698,
+        1.0,
+        1.0
+      ],
+      "intensity": 0.5,
+      "falloff": 2.700000047683716,
+      "width": 1.0,
+      "disabledScale": 0.4000000059604645,
+      "enabledScale": 0.2800000011920929,
+      "pressedScale": 0.8700000047683716
+    }
+  }
 };
 
 /** Host controls storage: HTTPS, bundled files, or an application resource scheme. */
@@ -508,9 +750,12 @@ const RELEASE_TEMPLATE_ASSET_ROOT = `/assets/${RELEASE_TEMPLATE_ID}`;
 const RELEASE_TEMPLATE_RUNTIME_ROOT = `/runtime/${RELEASE_TEMPLATE_ID}`;
 const NOTE_SOURCE = "Assets/AddressableResources/Live/Note/skin001";
 const LANE_SOURCE = "Assets/AddressableResources/Live/Lane/skin001";
-const EFFECT001_SOURCE = "Assets/AddressableResources/Live/NoteEffect/effect001";
-const EFFECT_COMMON_SOURCE = "Assets/AddressableResources/Live/NoteEffect/common";
-const LANE_EFFECT_SOURCE = "Assets/AddressableResources/Live/Prefabs/LiveGame/Effect";
+const EFFECT001_SOURCE = "Assets/AddressableResources/Effect/Live/NoteEffect/effect001";
+const EFFECT001LIGHT_SOURCE = "Assets/AddressableResources/Effect/Live/NoteEffect/effect001Light";
+const EFFECT_COMMON_SOURCE = "Assets/AddressableResources/Effect/Live/NoteEffect/common";
+const EFFECT_COMMON_TEXTURE_SOURCE = `${EFFECT_COMMON_SOURCE}/Texture`;
+const EFFECT_COMMON_LIGHT_TEXTURE_SOURCE = `${EFFECT_COMMON_SOURCE}/TextureLight`;
+const LANE_EFFECT_SOURCE = "Assets/AddressableResources/Effect/Live/LaneEffect/effect001";
 const LIVE_IMAGE_SOURCE = "Assets/AddressableResources/Live/Images";
 const HUD_FONT_SOURCE = "Assets/AddressableResources/Font/VibeMOPro-Medium/VibeMOPro-Medium SDF.asset";
 
@@ -536,6 +781,10 @@ const noteSound = (name: string): string => `${RELEASE_TEMPLATE_RUNTIME_ROOT}/no
 const effect001Root = (prefab: string, objectFile: string): string => {
   const object = objectOrdinal(objectFile);
   return unityObject(`${EFFECT001_SOURCE}/${prefab}`, object.type, object.ordinal);
+};
+const effect001LightRoot = (prefab: string, objectFile: string): string => {
+  const object = objectOrdinal(objectFile);
+  return unityObject(`${EFFECT001LIGHT_SOURCE}/${prefab}`, object.type, object.ordinal);
 };
 const effectCommonRoot = (source: string): string => unityObject(`${EFFECT_COMMON_SOURCE}/${source}`, "AnimationClip");
 
@@ -611,27 +860,28 @@ function effectSprite(
 }
 
 const TAP_ANIMATION_CLIPS = {
-  perfect: effectCommonRoot("anim/tap_perfect.anim"),
-  great: effectCommonRoot("anim/tap_great.anim"),
-  good: effectCommonRoot("anim/tap_good.anim"),
-  bad: effectCommonRoot("anim/tap_bad.anim"),
+  perfect: effectCommonRoot("Animation/tap_perfect.anim"),
+  great: effectCommonRoot("Animation/tap_great.anim"),
+  good: effectCommonRoot("Animation/tap_good.anim"),
+  bad: effectCommonRoot("Animation/tap_bad.anim"),
 } as const;
 const SLIDE_ANIMATION_CLIPS = {
-  perfect: effectCommonRoot("anim/tap_slide_parfect.anim"),
-  great: effectCommonRoot("anim/tap_slide_great.anim"),
-  good: effectCommonRoot("anim/tap_slide_good.anim"),
-  bad: effectCommonRoot("anim/tap_slide_bad.anim"),
+  perfect: effectCommonRoot("Animation/tap_slide_parfect.anim"),
+  great: effectCommonRoot("Animation/tap_slide_great.anim"),
+  good: effectCommonRoot("Animation/tap_slide_good.anim"),
+  bad: effectCommonRoot("Animation/tap_slide_bad.anim"),
 } as const;
 const FLICK_ANIMATION_CLIPS = {
-  perfect: effectCommonRoot("anim/tap_flick_perfect.anim"),
-  great: effectCommonRoot("anim/tap_flick_great.anim"),
-  good: effectCommonRoot("anim/tap_flick_good.anim"),
-  bad: effectCommonRoot("anim/tap_flick_bad.anim"),
+  perfect: effectCommonRoot("Animation/tap_flick_perfect.anim"),
+  great: effectCommonRoot("Animation/tap_flick_great.anim"),
+  good: effectCommonRoot("Animation/tap_flick_good.anim"),
+  bad: effectCommonRoot("Animation/tap_flick_bad.anim"),
 } as const;
 const TAP_PERFECT_CLIP = TAP_ANIMATION_CLIPS.perfect;
 const SLIDE_PERFECT_CLIP = SLIDE_ANIMATION_CLIPS.perfect;
 const FLICK_PERFECT_CLIP = FLICK_ANIMATION_CLIPS.perfect;
-const SLIDE_LOOP_CLIP = effectCommonRoot("anim/tap_slide_loop.anim");
+const SLIDE_LOOP_CLIP = effectCommonRoot("Animation/tap_slide_loop.anim");
+
 
 /**
  * Complete visible effect001 prefab graph. ParticleSystem component assets are
@@ -731,7 +981,7 @@ export const EFFECT001_PREFABS: Readonly<Record<keyof typeof EFFECT001_PREFAB_ID
         "note_slide.prefab",
         "SpriteRenderer_1.asset",
         "frame",
-        [0.29026374220848083, 0.05090780183672905, 0.9811320900917053, 1],
+        [0.11372549086809158, 0.11764705926179886, 0.9058823585510254, 1],
         [5.5, 1.75],
         [0, 0, 0],
       ),
@@ -739,7 +989,7 @@ export const EFFECT001_PREFABS: Readonly<Record<keyof typeof EFFECT001_PREFAB_ID
         "note_slide.prefab",
         "SpriteRenderer_4.asset",
         "pillar01",
-        [0.0716320127248764, 0.03764684498310089, 0.16981130838394165, 1],
+        [0.11372549086809158, 0.11764705926179886, 0.9058823585510254, 1],
         [1.5, 6],
         [-2.5, -0.06, 0.64],
       ),
@@ -747,7 +997,7 @@ export const EFFECT001_PREFABS: Readonly<Record<keyof typeof EFFECT001_PREFAB_ID
         "note_slide.prefab",
         "SpriteRenderer.asset",
         "pillar02",
-        [0.0716320127248764, 0.03764684498310089, 0.16981130838394165, 1],
+        [0.11372549086809158, 0.11764705926179886, 0.9058823585510254, 1],
         [1.5, 6],
         [2.5, -0.06, 0.64],
       ),
@@ -755,7 +1005,7 @@ export const EFFECT001_PREFABS: Readonly<Record<keyof typeof EFFECT001_PREFAB_ID
         "note_slide.prefab",
         "SpriteRenderer_3.asset",
         "pillar03",
-        [0.15670402348041534, 0.061943765729665756, 0.4528301954269409, 1],
+        [0.11372549086809158, 0.11764705926179886, 0.9058823585510254, 1],
         [1, 4],
         [-2.5, -0.06, -0.54],
       ),
@@ -763,7 +1013,7 @@ export const EFFECT001_PREFABS: Readonly<Record<keyof typeof EFFECT001_PREFAB_ID
         "note_slide.prefab",
         "SpriteRenderer_2.asset",
         "pillar04",
-        [0.15670402348041534, 0.061943765729665756, 0.4528301954269409, 1],
+        [0.11372549086809158, 0.11764705926179886, 0.9058823585510254, 1],
         [1, 4],
         [2.5, -0.06, -0.54],
       ),
@@ -1038,20 +1288,23 @@ export const EFFECT001_PREFABS: Readonly<Record<keyof typeof EFFECT001_PREFAB_ID
     animationClipUrl: TAP_PERFECT_CLIP,
     animationClipUrls: TAP_ANIMATION_CLIPS,
     particleSystems: [
-      effectParticle("note_excellent.prefab", "ParticleSystem_2.asset", "ef_particle_point", "star", [0, -0.53, 0], {
+      effectParticle("note_just.prefab", "ParticleSystem_2.asset", "ef_particle_point", "star", [0, -0.53, 0], {
+        animationPath: "ef_splash/ef_particle_point",
         shapeWidthOffset: 0.08,
       }),
-      effectParticle("note_excellent.prefab", "ParticleSystem_3.asset", "ef_particle_star", "star", [0, -0.531, 0], {
+      effectParticle("note_just.prefab", "ParticleSystem_3.asset", "ef_particle_star", "star", [0, -0.531, 0], {
+        animationPath: "ef_splash/ef_particle_star",
         shapeWidthOffset: -0.02,
       }),
-      effectParticle("note_excellent.prefab", "ParticleSystem_1.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
+      effectParticle("note_just.prefab", "ParticleSystem_1.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
+        animationPath: "ef_splash/ef_wall_center",
         localScale: [4.9, 1, 1],
         renderer: "wallMesh",
       }),
     ],
     sprites: [
       effectSprite(
-        "note_excellent.prefab",
+        "note_just.prefab",
         "SpriteRenderer_4.asset",
         "frame",
         [0.5, 0.45834264159202576, 0.030660390853881836, 0],
@@ -1059,23 +1312,23 @@ export const EFFECT001_PREFABS: Readonly<Record<keyof typeof EFFECT001_PREFAB_ID
         [0, 0, 0],
       ),
       effectSprite(
-        "note_excellent.prefab",
-        "SpriteRenderer_2.asset",
+        "note_just.prefab",
+        "SpriteRenderer_1.asset",
         "pillar01",
         [0.1603773832321167, 0.14632397890090942, 0.038581348955631256, 0],
         [1.5, 6],
         [-2.5, -0.06, 0.64],
       ),
       effectSprite(
-        "note_excellent.prefab",
-        "SpriteRenderer_1.asset",
+        "note_just.prefab",
+        "SpriteRenderer_2.asset",
         "pillar02",
         [0.1603773832321167, 0.14632397890090942, 0.038581348955631256, 0],
         [1.5, 6],
         [2.5, -0.06, 0.64],
       ),
       effectSprite(
-        "note_excellent.prefab",
+        "note_just.prefab",
         "SpriteRenderer.asset",
         "pillar03",
         [0.28301888704299927, 0.25544610619544983, 0.04405483230948448, 0],
@@ -1083,7 +1336,7 @@ export const EFFECT001_PREFABS: Readonly<Record<keyof typeof EFFECT001_PREFAB_ID
         [-2.5, -0.06, -0.54],
       ),
       effectSprite(
-        "note_excellent.prefab",
+        "note_just.prefab",
         "SpriteRenderer_3.asset",
         "pillar04",
         [0.28301888704299927, 0.25544610619544983, 0.04405483230948448, 0],
@@ -1123,7 +1376,7 @@ export const EFFECT001_PREFABS: Readonly<Record<keyof typeof EFFECT001_PREFAB_ID
         "note_slide_loop.prefab",
         "SpriteRenderer_1.asset",
         "frame",
-        [0.2976938784122467, 0.051886796951293945, 1, 1],
+        [0.11372549086809158, 0.11764705926179886, 0.9058823585510254, 1],
         [5.5, 1.75],
         [0, 0, 0],
         true,
@@ -1132,7 +1385,7 @@ export const EFFECT001_PREFABS: Readonly<Record<keyof typeof EFFECT001_PREFAB_ID
         "note_slide_loop.prefab",
         "SpriteRenderer_3.asset",
         "pillar01",
-        [0.22390960156917572, 0.08050017803907394, 0.6320754289627075, 0.1568627506494522],
+        [0.1137254610657692, 0.11764705926179886, 0.9058823585510254, 0.1568627506494522],
         [4, 6],
         [-2.5, -0.06, 0.64],
         true,
@@ -1141,7 +1394,7 @@ export const EFFECT001_PREFABS: Readonly<Record<keyof typeof EFFECT001_PREFAB_ID
         "note_slide_loop.prefab",
         "SpriteRenderer_2.asset",
         "pillar02",
-        [0.22390960156917572, 0.08050017803907394, 0.6320754289627075, 0.1568627506494522],
+        [0.1137254610657692, 0.11764705926179886, 0.9058823585510254, 0.1568627506494522],
         [4, 6],
         [2.5, -0.06, 0.64],
         true,
@@ -1150,7 +1403,7 @@ export const EFFECT001_PREFABS: Readonly<Record<keyof typeof EFFECT001_PREFAB_ID
         "note_slide_loop.prefab",
         "SpriteRenderer_4.asset",
         "pillar03",
-        [0.22390960156917572, 0.08050017803907394, 0.6320754289627075, 0.1568627506494522],
+        [0.1137254610657692, 0.11764705926179886, 0.9058823585510254, 0.1568627506494522],
         [4, 4],
         [-2.5, -0.06, -0.54],
         true,
@@ -1159,7 +1412,7 @@ export const EFFECT001_PREFABS: Readonly<Record<keyof typeof EFFECT001_PREFAB_ID
         "note_slide_loop.prefab",
         "SpriteRenderer.asset",
         "pillar04",
-        [0.22390960156917572, 0.08050017803907394, 0.6320754289627075, 0.1568627506494522],
+        [0.1137254610657692, 0.11764705926179886, 0.9058823585510254, 0.1568627506494522],
         [4, 4],
         [2.5, -0.06, -0.54],
         true,
@@ -1205,10 +1458,329 @@ export const EFFECT001_PREFABS: Readonly<Record<keyof typeof EFFECT001_PREFAB_ID
         "note_slide_connect.prefab",
         "SpriteRenderer.asset",
         "frame",
-        [0.39179620146751404, 0.18222679197788239, 0.9905660152435303, 1],
+        [0.11372549086809158, 0.11764705926179886, 0.9058823585510254, 1],
         [5.5, 1.75],
         [0, 0, 0],
       ),
+    ],
+  },
+};
+
+/** Light authored profile from effect001Light; it is not a user skin. */
+function lightParticle(
+  root: string,
+  file: string,
+  name: string,
+  texture: Effect001TextureKey,
+  localPosition: readonly [number, number, number],
+  options: Partial<
+    Pick<
+      Effect001ParticleSystemAssetRef,
+      | "localScale"
+      | "localRotationX"
+      | "shapeWidthOffset"
+      | "widthScaleRange"
+      | "rendererPivot"
+      | "rendererMaxParticleSize"
+      | "renderer"
+      | "animationPath"
+    >
+  > = {},
+): Effect001ParticleSystemAssetRef {
+  return {
+    ...effectParticle(root, file, name, texture, localPosition, options),
+    metadataUrl: effect001LightRoot(root, file),
+  };
+}
+
+function lightSprite(
+  root: string,
+  file: string,
+  name: Effect001SpriteName,
+  baseColor: readonly [number, number, number, number],
+  baseSize: readonly [number, number],
+  localPosition: readonly [number, number, number],
+  baseActive = false,
+  flipX = false,
+): Effect001SpriteAssetRef {
+  return {
+    ...effectSprite(root, file, name, baseColor, baseSize, localPosition, baseActive, flipX),
+    metadataUrl: effect001LightRoot(root, file),
+  };
+}
+
+export const EFFECT001LIGHT_PREFABS: Readonly<Record<keyof typeof EFFECT001_PREFAB_IDS, Effect001PrefabAssetRef>> = {
+  Normal: {
+    id: EFFECT001_PREFAB_IDS.Normal,
+    rootScaleX: 1,
+    loopAnimation: false,
+    animationClipUrl: TAP_PERFECT_CLIP,
+    animationClipUrls: TAP_ANIMATION_CLIPS,
+    particleSystems: [
+      lightParticle("note_normal_light.prefab", "ParticleSystem_3.asset", "ef_particle_point", "star", [0, -0.53, 0], {
+        animationPath: "ef_splash/ef_particle_point",
+        shapeWidthOffset: 0.08,
+      }),
+      lightParticle("note_normal_light.prefab", "ParticleSystem.asset", "ef_particle_star", "star", [0, -0.531, 0], {
+        animationPath: "ef_splash/ef_particle_star",
+        shapeWidthOffset: -0.02,
+      }),
+      lightParticle("note_normal_light.prefab", "ParticleSystem_1.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
+        animationPath: "ef_splash/ef_wall_center",
+        localScale: [4.9, 1, 1],
+        renderer: "wallMesh",
+      }),
+    ],
+    sprites: [
+      lightSprite("note_normal_light.prefab", "SpriteRenderer.asset", "frame", [0.0777856633067131, 0.23382169008255005, 0.8679245114326477, 0], [5.5, 1.75], [0, 0, 0]),
+      lightSprite("note_normal_light.prefab", "SpriteRenderer_1.asset", "pillar01", [0, 0.4424777030944824, 1, 0], [1.5, 6], [-2.5, -0.06, 0.64]),
+      lightSprite("note_normal_light.prefab", "SpriteRenderer_4.asset", "pillar02", [0, 0.4424777030944824, 1, 0], [1.5, 6], [2.5, -0.06, 0.64]),
+      lightSprite("note_normal_light.prefab", "SpriteRenderer_3.asset", "pillar03", [0, 0.4424777030944824, 1, 0], [1, 4], [-2.5, -0.06, -0.61]),
+      lightSprite("note_normal_light.prefab", "SpriteRenderer_2.asset", "pillar04", [0, 0.4424777030944824, 1, 0], [1, 4], [2.5, -0.06, -0.61]),
+    ],
+  },
+  Slide: {
+    id: EFFECT001_PREFAB_IDS.Slide,
+    rootScaleX: 1,
+    loopAnimation: false,
+    animationClipUrl: SLIDE_PERFECT_CLIP,
+    animationClipUrls: SLIDE_ANIMATION_CLIPS,
+    particleSystems: [
+      lightParticle("note_slide_light.prefab", "ParticleSystem_1.asset", "ef_particle_point", "star", [0, -0.53, 0], {
+        animationPath: "ef_splash/ef_particle_point",
+        shapeWidthOffset: 0.08,
+      }),
+      lightParticle("note_slide_light.prefab", "ParticleSystem_3.asset", "ef_particle_star", "star", [0, -0.531, 0], {
+        animationPath: "ef_splash/ef_particle_star",
+        localRotationX: -Math.PI / 2,
+        shapeWidthOffset: -0.02,
+      }),
+      lightParticle("note_slide_light.prefab", "ParticleSystem_2.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
+        animationPath: "ef_splash/ef_wall_center",
+        localScale: [4.9, 1, 1],
+        renderer: "wallMesh",
+      }),
+    ],
+    sprites: [
+      lightSprite("note_slide_light.prefab", "SpriteRenderer_3.asset", "frame", [0.29026374220848083, 0.05090780183672905, 0.9811320900917053, 1], [5.5, 1.75], [0, 0, 0]),
+      lightSprite("note_slide_light.prefab", "SpriteRenderer_1.asset", "pillar01", [0.0716320127248764, 0.03764684498310089, 0.16981130838394165, 1], [1.5, 6], [-2.5, -0.06, 0.64]),
+      lightSprite("note_slide_light.prefab", "SpriteRenderer.asset", "pillar02", [0.0716320127248764, 0.03764684498310089, 0.16981130838394165, 1], [1.5, 6], [2.5, -0.06, 0.64]),
+      lightSprite("note_slide_light.prefab", "SpriteRenderer_4.asset", "pillar03", [0.15670402348041534, 0.061943765729665756, 0.4528301954269409, 1], [1, 4], [-2.5, -0.06, -0.54]),
+      lightSprite("note_slide_light.prefab", "SpriteRenderer_2.asset", "pillar04", [0.15670402348041534, 0.061943765729665756, 0.4528301954269409, 1], [1, 4], [2.5, -0.06, -0.54]),
+    ],
+  },
+  Flick: {
+    id: EFFECT001_PREFAB_IDS.Flick,
+    rootScaleX: 1,
+    loopAnimation: false,
+    animationClipUrl: FLICK_PERFECT_CLIP,
+    animationClipUrls: FLICK_ANIMATION_CLIPS,
+    particleSystems: [
+      lightParticle("note_flick_light.prefab", "ParticleSystem_9.asset", "ef_particle_point", "star", [0, -0.53, 0], {
+        animationPath: "ef_splash/ef_particle_point",
+        shapeWidthOffset: 0.08,
+      }),
+      lightParticle("note_flick_light.prefab", "ParticleSystem_1.asset", "ef_particle_star", "star", [0, -0.531, 0], {
+        animationPath: "ef_splash/ef_particle_star",
+        shapeWidthOffset: -0.02,
+      }),
+      lightParticle("note_flick_light.prefab", "ParticleSystem_2.asset", "ef_particle_point01", "star", [0, 0.7100000381469727, 0], {
+        animationPath: "ef_splash_move/ef_particle_point01",
+        widthScaleRange: [0.05, 3],
+      }),
+      lightParticle("note_flick_light.prefab", "ParticleSystem_6.asset", "ef_particle_point02", "star", [0, 0.7100000381469727, 0], {
+        animationPath: "ef_splash_move/ef_particle_point02",
+        widthScaleRange: [0.05, 3],
+      }),
+      lightParticle("note_flick_light.prefab", "ParticleSystem_5.asset", "ef_particl_splash", "longStar", [0, 1.8, -0.2], {
+        animationPath: "ef_splash_move/ef_particl_splash",
+        localScale: [1.02, 1, 1],
+        widthScaleRange: [0.05, 3],
+      }),
+      lightParticle("note_flick_light.prefab", "ParticleSystem_7.asset", "ef_particl_splash_line", "centerPillar", [0, 0.15, -0.2], {
+        animationPath: "ef_splash_move/ef_particl_splash_line",
+        rendererPivot: [0, 0.3, 0],
+        widthScaleRange: [0.05, 3],
+      }),
+      lightParticle("note_flick_light.prefab", "ParticleSystem_4.asset", "ef_particl_splash_line02", "centerPillar02", [0, -0.5, -0.2], {
+        animationPath: "ef_splash_move/ef_particl_splash_line02",
+        rendererPivot: [0, 0.3, 0],
+        widthScaleRange: [0.05, 3],
+      }),
+      lightParticle("note_flick_light.prefab", "ParticleSystem_8.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
+        animationPath: "ef_splash/ef_wall_center",
+        localScale: [4.9, 1, 1],
+        renderer: "wallMesh",
+      }),
+    ],
+    sprites: [
+      lightSprite("note_flick_light.prefab", "SpriteRenderer_2.asset", "frame", [0.6792452931404114, 0.30566415190696716, 0.06728372722864151, 0], [5.5, 1.75], [0, 0, 0]),
+      lightSprite("note_flick_light.prefab", "SpriteRenderer_3.asset", "pillar01", [0.37735849618911743, 0.20075224339962006, 0.08721965551376343, 0], [3, 6], [-2.5, -0.06, 0.64]),
+      lightSprite("note_flick_light.prefab", "SpriteRenderer_4.asset", "pillar02", [0.37735849618911743, 0.20075224339962006, 0.08721965551376343, 0], [3, 6], [2.5, -0.06, 0.64], false, true),
+      lightSprite("note_flick_light.prefab", "SpriteRenderer_1.asset", "pillar03", [0.43396228551864624, 0.21204276382923126, 0.07164470851421356, 0], [4, 4], [-2.5, -0.06, -0.54]),
+      lightSprite("note_flick_light.prefab", "SpriteRenderer.asset", "pillar04", [0.43396228551864624, 0.21204276382923126, 0.07164470851421356, 0], [4, 4], [2.5, -0.06, -0.54], false, true),
+    ],
+  },
+  Left: {
+    id: EFFECT001_PREFAB_IDS.Left,
+    rootScaleX: 1,
+    loopAnimation: false,
+    animationClipUrl: FLICK_PERFECT_CLIP,
+    animationClipUrls: FLICK_ANIMATION_CLIPS,
+    distanceEmitterPathHash: unityStringHash("ef_splash_move/ef_splash"),
+    particleSystems: [
+      lightParticle("note_flick_left_light.prefab", "ParticleSystem_6.asset", "ef_particle_point", "star", [0, -0.53, 0], {
+        animationPath: "ef_splash/ef_particle_point",
+        shapeWidthOffset: 0.08,
+      }),
+      lightParticle("note_flick_left_light.prefab", "ParticleSystem_1.asset", "ef_particle_star", "star", [0, -0.531, 0], {
+        animationPath: "ef_splash/ef_particle_star",
+        shapeWidthOffset: -0.02,
+      }),
+      lightParticle("note_flick_left_light.prefab", "ParticleSystem_2.asset", "ef_splash", "longStar", [0, 0, 0], {
+        animationPath: "ef_splash_move/ef_splash",
+        widthScaleRange: [0.082, 1.5],
+      }),
+      lightParticle("note_flick_left_light.prefab", "ParticleSystem_3.asset", "ef_splash02", "star", [0, 0, 0], {
+        animationPath: "ef_splash_move/ef_splash/ef_splash02",
+        widthScaleRange: [0.082, 1.5],
+      }),
+      lightParticle("note_flick_left_light.prefab", "ParticleSystem_5.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
+        animationPath: "ef_splash/ef_wall_center",
+        localScale: [4.9, 1, 1],
+        renderer: "wallMesh",
+      }),
+    ],
+    sprites: [
+      lightSprite("note_flick_left_light.prefab", "SpriteRenderer_1.asset", "frame", [0.03921568766236305, 0.5568627715110779, 0.14509804546833038, 0], [5.5, 1.75], [0, 0, 0]),
+      lightSprite("note_flick_left_light.prefab", "SpriteRenderer_4.asset", "pillar01", [0.02429690957069397, 0.1320754885673523, 0.04532688111066818, 0], [1.5, 6], [-2.5, -0.06, 0.64]),
+      lightSprite("note_flick_left_light.prefab", "SpriteRenderer_2.asset", "pillar02", [0.02429690957069397, 0.1320754885673523, 0.04532688111066818, 0], [1.5, 6], [2.5, -0.06, 0.64]),
+      lightSprite("note_flick_left_light.prefab", "SpriteRenderer_3.asset", "pillar03", [0.05598077550530434, 0.3207547068595886, 0.11271801590919495, 0], [1, 4], [-2.5, -0.06, -0.54]),
+      lightSprite("note_flick_left_light.prefab", "SpriteRenderer.asset", "pillar04", [0.05598077550530434, 0.3207547068595886, 0.11271801590919495, 0], [1, 4], [2.5, -0.06, -0.54]),
+    ],
+  },
+  Right: {
+    id: EFFECT001_PREFAB_IDS.Right,
+    rootScaleX: -1,
+    loopAnimation: false,
+    animationClipUrl: FLICK_PERFECT_CLIP,
+    animationClipUrls: FLICK_ANIMATION_CLIPS,
+    distanceEmitterPathHash: unityStringHash("ef_splash_move/ef_splash"),
+    particleSystems: [
+      lightParticle("note_flick_right_light.prefab", "ParticleSystem_2.asset", "ef_particle_point", "star", [0, -0.53, 0], {
+        animationPath: "ef_splash/ef_particle_point",
+        shapeWidthOffset: 0.08,
+      }),
+      lightParticle("note_flick_right_light.prefab", "ParticleSystem_4.asset", "ef_particle_star", "star", [0, -0.531, 0], {
+        animationPath: "ef_splash/ef_particle_star",
+        shapeWidthOffset: -0.02,
+      }),
+      lightParticle("note_flick_right_light.prefab", "ParticleSystem_3.asset", "ef_splash", "longStar", [0, 0, 0], {
+        animationPath: "ef_splash_move/ef_splash",
+        widthScaleRange: [0.082, 1.5],
+      }),
+      lightParticle("note_flick_right_light.prefab", "ParticleSystem_1.asset", "ef_splash02", "star", [0, 0, 0], {
+        animationPath: "ef_splash_move/ef_splash/ef_splash02",
+        widthScaleRange: [0.082, 1.5],
+      }),
+      lightParticle("note_flick_right_light.prefab", "ParticleSystem.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
+        animationPath: "ef_splash/ef_wall_center",
+        localScale: [4.9, 1, 1],
+        renderer: "wallMesh",
+      }),
+    ],
+    sprites: [
+      lightSprite("note_flick_right_light.prefab", "SpriteRenderer_4.asset", "frame", [1, 0.15566039085388184, 0.6591655611991882, 0], [5.5, 1.75], [0, 0, 0]),
+      lightSprite("note_flick_right_light.prefab", "SpriteRenderer_2.asset", "pillar01", [0.18867921829223633, 0.07386969029903412, 0.14247536659240723, 0], [1.5, 6], [-2.5, -0.06, 0.64]),
+      lightSprite("note_flick_right_light.prefab", "SpriteRenderer_3.asset", "pillar02", [0.18867921829223633, 0.07386969029903412, 0.14247536659240723, 0], [1.5, 6], [2.5, -0.06, 0.64]),
+      lightSprite("note_flick_right_light.prefab", "SpriteRenderer_1.asset", "pillar03", [0.4150943160057068, 0.09202562272548676, 0.28141072392463684, 0], [1, 4], [-2.5, -0.06, -0.54]),
+      lightSprite("note_flick_right_light.prefab", "SpriteRenderer.asset", "pillar04", [0.4150943160057068, 0.09202562272548676, 0.28141072392463684, 0], [1, 4], [2.5, -0.06, -0.54]),
+    ],
+  },
+  Excellent: {
+    id: EFFECT001_PREFAB_IDS.Excellent,
+    rootScaleX: 1,
+    loopAnimation: false,
+    animationClipUrl: TAP_PERFECT_CLIP,
+    animationClipUrls: TAP_ANIMATION_CLIPS,
+    particleSystems: [
+      lightParticle("note_just_light.prefab", "ParticleSystem_3.asset", "ef_particle_point", "star", [0, -0.53, 0], {
+        animationPath: "ef_splash/ef_particle_point",
+        shapeWidthOffset: 0.08,
+      }),
+      lightParticle("note_just_light.prefab", "ParticleSystem_2.asset", "ef_particle_star", "star", [0, -0.531, 0], {
+        animationPath: "ef_splash/ef_particle_star",
+        shapeWidthOffset: -0.02,
+      }),
+      lightParticle("note_just_light.prefab", "ParticleSystem_1.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
+        animationPath: "ef_splash/ef_wall_center",
+        localScale: [4.9, 1, 1],
+        renderer: "wallMesh",
+      }),
+    ],
+    sprites: [
+      lightSprite("note_just_light.prefab", "SpriteRenderer_2.asset", "frame", [0.5, 0.45834264159202576, 0.030660390853881836, 0], [5.5, 1.75], [0, 0, 0]),
+      lightSprite("note_just_light.prefab", "SpriteRenderer_4.asset", "pillar01", [0.1603773832321167, 0.14632397890090942, 0.038581348955631256, 0], [1.5, 6], [-2.5, -0.06, 0.64]),
+      lightSprite("note_just_light.prefab", "SpriteRenderer_3.asset", "pillar02", [0.1603773832321167, 0.14632397890090942, 0.038581348955631256, 0], [1.5, 6], [2.5, -0.06, 0.64]),
+      lightSprite("note_just_light.prefab", "SpriteRenderer.asset", "pillar03", [0.28301888704299927, 0.25544610619544983, 0.04405483230948448, 0], [1, 4], [-2.5, -0.06, -0.54]),
+      lightSprite("note_just_light.prefab", "SpriteRenderer_1.asset", "pillar04", [0.28301888704299927, 0.25544610619544983, 0.04405483230948448, 0], [1, 4], [2.5, -0.06, -0.54]),
+    ],
+  },
+  SlideLoop: {
+    id: EFFECT001_PREFAB_IDS.SlideLoop,
+    rootScaleX: 1,
+    loopAnimation: true,
+    animationClipUrl: SLIDE_LOOP_CLIP,
+    particleSystems: [
+      lightParticle("note_slide_loop_light.prefab", "ParticleSystem.asset", "ef_particle_point", "star", [0, -0.531, 0], {
+        animationPath: "ef_slide_loop/ef_particle_point",
+        localRotationX: -Math.PI / 2,
+        shapeWidthOffset: 0.08,
+      }),
+      lightParticle("note_slide_loop_light.prefab", "ParticleSystem_3.asset", "ef_particle_point_frame", "star", [0, -0.531, 0], {
+        animationPath: "ef_slide_loop/ef_particle_point_frame",
+        localRotationX: -Math.PI / 2,
+        shapeWidthOffset: 0.08,
+      }),
+      lightParticle("note_slide_loop_light.prefab", "ParticleSystem_2.asset", "ef_wall_center", "wall", [0, 0, 0], {
+        animationPath: "ef_slide_loop/ef_wall_center",
+        localScale: [4.9, 1, 1],
+        renderer: "wallMesh",
+      }),
+    ],
+    sprites: [
+      lightSprite("note_slide_loop_light.prefab", "SpriteRenderer_4.asset", "frame", [0.2976938784122467, 0.051886796951293945, 1, 1], [5.5, 1.75], [0, 0, 0], true),
+      lightSprite("note_slide_loop_light.prefab", "SpriteRenderer_1.asset", "pillar01", [0.22390960156917572, 0.08050017803907394, 0.6320754289627075, 0.1568627506494522], [4, 6], [-2.5, -0.06, 0.64], true),
+      lightSprite("note_slide_loop_light.prefab", "SpriteRenderer_2.asset", "pillar02", [0.22390960156917572, 0.08050017803907394, 0.6320754289627075, 0.1568627506494522], [4, 6], [2.5, -0.06, 0.64], true),
+      lightSprite("note_slide_loop_light.prefab", "SpriteRenderer_3.asset", "pillar03", [0.22390960156917572, 0.08050017803907394, 0.6320754289627075, 0.1568627506494522], [4, 4], [-2.5, -0.06, -0.54], true),
+      lightSprite("note_slide_loop_light.prefab", "SpriteRenderer.asset", "pillar04", [0.22390960156917572, 0.08050017803907394, 0.6320754289627075, 0.1568627506494522], [4, 4], [2.5, -0.06, -0.54], true),
+    ],
+  },
+  Connect: {
+    id: EFFECT001_PREFAB_IDS.Connect,
+    rootScaleX: 1,
+    loopAnimation: false,
+    animationClipUrl: SLIDE_PERFECT_CLIP,
+    animationClipUrls: SLIDE_ANIMATION_CLIPS,
+    particleSystems: [
+      lightParticle("note_slide_connect_light.prefab", "ParticleSystem_1.asset", "ef_particle_point", "star", [0, -0.53, 0], {
+        animationPath: "ef_splash/ef_particle_point",
+        shapeWidthOffset: 0.08,
+      }),
+      lightParticle("note_slide_connect_light.prefab", "ParticleSystem_2.asset", "ef_particle_star", "star", [0, -0.531, 0], {
+        animationPath: "ef_splash/ef_particle_star",
+        localRotationX: -Math.PI / 2,
+        shapeWidthOffset: -0.02,
+      }),
+      lightParticle("note_slide_connect_light.prefab", "ParticleSystem_3.asset", "ef_splash", "star", [0, 0, 0]),
+      lightParticle("note_slide_connect_light.prefab", "ParticleSystem.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
+        animationPath: "ef_splash/ef_wall_center",
+        localScale: [4.9, 1, 1],
+        renderer: "wallMesh",
+      }),
+    ],
+    sprites: [
+      lightSprite("note_slide_connect_light.prefab", "SpriteRenderer.asset", "frame", [0.39179620146751404, 0.18222679197788239, 0.9905660152435303, 1], [5.5, 1.75], [0, 0, 0]),
     ],
   },
 };
@@ -1222,9 +1794,8 @@ export const EFFECT001_PREFABS: Readonly<Record<keyof typeof EFFECT001_PREFAB_ID
 // ---------------------------------------------------------------------------
 
 const EFFECT001SIMPLE_SOURCE = "Assets/AddressableResources/Effect/Live/NoteEffect/effect001Simple";
-const EFFECT_COMMON_CURRENT_SOURCE = "Assets/AddressableResources/Effect/Live/NoteEffect/common";
 const EFFECT_SIMPLE_CLIP = (name: string): string =>
-  unityObject(`${EFFECT_COMMON_CURRENT_SOURCE}/AnimationSimple/${name}.anim`, "AnimationClip");
+  unityObject(`${EFFECT_COMMON_SOURCE}/AnimationSimple/${name}.anim`, "AnimationClip");
 
 const simpleObject = (prefab: string, type: string, ordinal = 0): string =>
   unityObject(`${EFFECT001SIMPLE_SOURCE}/${prefab}`, type, ordinal);
@@ -1596,6 +2167,51 @@ export const EFFECT001SIMPLE_PREFABS: Readonly<Record<string, Effect001PrefabAss
   },
 };
 
+interface AuthoredEffectProfileConfig {
+  readonly effect001Prefabs: Readonly<Record<string, Effect001PrefabAssetRef>>;
+  readonly textureSource: string;
+  readonly tapLineTextureSource: string;
+  readonly tapLineTextureName: string;
+  readonly circleIconTextureSource: string;
+}
+
+const authoredEffectProfileConfigs: Readonly<Record<OurNotesAuthoredEffectProfile, AuthoredEffectProfileConfig>> = {
+  full: {
+    effect001Prefabs: EFFECT001_PREFABS,
+    textureSource: EFFECT_COMMON_TEXTURE_SOURCE,
+    tapLineTextureSource: EFFECT_COMMON_TEXTURE_SOURCE,
+    tapLineTextureName: "ef_tap_line.png",
+    circleIconTextureSource: EFFECT_COMMON_TEXTURE_SOURCE,
+  },
+  light: {
+    effect001Prefabs: EFFECT001LIGHT_PREFABS,
+    textureSource: EFFECT_COMMON_TEXTURE_SOURCE,
+    tapLineTextureSource: EFFECT_COMMON_LIGHT_TEXTURE_SOURCE,
+    tapLineTextureName: "ef_tap_line_light.png",
+    circleIconTextureSource: EFFECT_COMMON_TEXTURE_SOURCE,
+  },
+  simple: {
+    effect001Prefabs: EFFECT001SIMPLE_PREFABS,
+    textureSource: EFFECT_COMMON_TEXTURE_SOURCE,
+    tapLineTextureSource: EFFECT_COMMON_TEXTURE_SOURCE,
+    tapLineTextureName: "ef_tap_line.png",
+    circleIconTextureSource: `${EFFECT_COMMON_SOURCE}/Texture`,
+  },
+};
+
+function resolveAuthoredEffectProfile(
+  noteEffectSkin: OurNotesNoteEffectSkin,
+  currentQuality: number | undefined,
+): OurNotesAuthoredEffectProfile {
+  if (currentQuality !== undefined && (!Number.isFinite(currentQuality) || !Number.isInteger(currentQuality))) {
+    throw new TypeError(`currentQuality must be a finite integer: ${currentQuality}`);
+  }
+  // The selected Simple skin has no SimpleLight asset. The native loader's
+  // same-selected-base fallback therefore remains Simple at every quality.
+  if (noteEffectSkin === "effect001Simple") return "simple";
+  return currentQuality === 2 ? "light" : "full";
+}
+
 function noteSkinSprites(skin: OurNotesNoteSkin): SpriteMetadataRef[] {
   return Object.entries(OUR_NOTES_BUNDLED_NOTE_ATLASES[skin].spriteMetadata).map(([name, metadata]) => ({
     name,
@@ -1612,13 +2228,20 @@ const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): 
   const noteSkin = runtimeMedia.noteSkin ?? "skin001";
   const bundledNoteAtlas = OUR_NOTES_BUNDLED_NOTE_ATLASES[noteSkin];
   const noteEffectSkin = runtimeMedia.noteEffectSkin ?? "effect001";
+  const authoredProfile = resolveAuthoredEffectProfile(noteEffectSkin, runtimeMedia.currentQuality);
+  const defaultAuthoredProfile: OurNotesAuthoredEffectProfile =
+    noteEffectSkin === "effect001Simple" ? "simple" : "full";
+  const effectProfile = authoredEffectProfileConfigs[authoredProfile];
+  const profileId = authoredProfile === defaultAuthoredProfile ? noteEffectSkin : `${noteEffectSkin}-${authoredProfile}`;
+  const textureSource = effectProfile.textureSource;
   return {
-    id: `our-notes-${noteSkin}-${noteEffectSkin}`,
+    id: `our-notes-${noteSkin}-${profileId}`,
     source: {
       game: "BanG Dream! Our Notes",
       noteSkin,
       laneSkin: "skin001",
       noteEffectSkin,
+      authoredProfile,
     },
     noteAtlas: {
       id: noteSkin,
@@ -1627,7 +2250,7 @@ const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): 
       atlasMetadata: bundledNoteAtlas.atlasMetadata,
       sprites: noteSkinSprites(noteSkin),
     },
-    slideLineStyle: nativeSlideLineStyles[noteSkin],
+    slideLineStyle: OUR_NOTES_SLIDE_LINE_STYLES[noteSkin],
     // skin003 ArrowGradientSettings{,Left,Right}; skins 001/002 leave the
     // flick arrows without the shader-driven sweep.
     ...(noteSkin === "skin003"
@@ -1648,16 +2271,15 @@ const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): 
       referenceImageUrl: sourceAsset(`${LANE_SOURCE}/reference_image.png`),
     },
     particles: {
-      starTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_tap_particle_star.png`),
-      longStarTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_tap_particle_star_long.png`),
-      tapLineTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_tap_line.png`),
-      tapPillarTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_tap_pillar.png`),
-      wallTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_wall.png`),
-      wallSideTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_wall_side.png`),
-      centerPillarTextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_pillar_center.png`),
-      centerPillar02TextureUrl: sourceAsset(`${EFFECT_COMMON_SOURCE}/ef_pillar_center02.png`),
-      circleIconTextureUrl: sourceAsset(`${EFFECT_COMMON_CURRENT_SOURCE}/Texture/ef_circle_icon.png`),
-      slideLineTextureUrl: sourceAsset(`${NOTE_SOURCE}/slideline_purple2.png`),
+      starTextureUrl: sourceAsset(`${textureSource}/ef_tap_particle_star.png`),
+      longStarTextureUrl: sourceAsset(`${textureSource}/ef_tap_particle_star_long.png`),
+      tapLineTextureUrl: sourceAsset(`${effectProfile.tapLineTextureSource}/${effectProfile.tapLineTextureName}`),
+      tapPillarTextureUrl: sourceAsset(`${textureSource}/ef_tap_pillar.png`),
+      wallTextureUrl: sourceAsset(`${textureSource}/ef_wall.png`),
+      wallSideTextureUrl: sourceAsset(`${textureSource}/ef_wall_side.png`),
+      centerPillarTextureUrl: sourceAsset(`${textureSource}/ef_pillar_center.png`),
+      centerPillar02TextureUrl: sourceAsset(`${textureSource}/ef_pillar_center02.png`),
+      circleIconTextureUrl: sourceAsset(`${effectProfile.circleIconTextureSource}/ef_circle_icon.png`),
       laneEffects: {
         inVain: {
           textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
@@ -1709,10 +2331,7 @@ const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): 
           lifetime: 0.44999998807907104 / 2,
         },
       },
-      effect001RootUrl: sourceAsset(
-        `${noteEffectSkin === "effect001Simple" ? EFFECT001SIMPLE_SOURCE : EFFECT001_SOURCE}/LiveNoteEffectAssetSettings.asset`,
-      ),
-      effect001Prefabs: noteEffectSkin === "effect001Simple" ? EFFECT001SIMPLE_PREFABS : EFFECT001_PREFABS,
+      effect001Prefabs: effectProfile.effect001Prefabs,
       effect001PrefabIds: EFFECT001_PREFAB_IDS,
     },
     hud: runtimeMedia.hud,
@@ -1762,12 +2381,32 @@ const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): 
   };
 };
 
+function isContainedReleaseUrl(url: string, prefix: string): boolean {
+  if (!url.startsWith(prefix)) return false;
+  let suffix: string;
+  try {
+    suffix = decodeURIComponent(url.slice(prefix.length));
+  } catch {
+    return false;
+  }
+  if (!suffix || suffix.startsWith("/") || suffix.includes("\\") || suffix.includes("\0")) return false;
+  return suffix.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+}
+
 export function ourNotesAssetManifestForRelease(
   releaseServer: string,
   runtimeMedia: OurNotesRuntimeMediaManifest,
 ): OurNotesAssetManifest {
   const normalizedReleaseServer = String(releaseServer || "").trim();
   if (!normalizedReleaseServer) throw new TypeError("A concrete release server is required for chart runtime media");
+  if (
+    normalizedReleaseServer === "." ||
+    normalizedReleaseServer === ".." ||
+    normalizedReleaseServer.includes("/") ||
+    normalizedReleaseServer.includes("\\")
+  ) {
+    throw new TypeError(`Invalid release server: ${normalizedReleaseServer}`);
+  }
   const encodedReleaseServer = encodeURIComponent(normalizedReleaseServer);
   const runtimePrefix = `/runtime/${encodedReleaseServer}/`;
   const assetPrefixes = [
@@ -1793,7 +2432,7 @@ export function ourNotesAssetManifestForRelease(
     runtimeMedia.hud.whiteSpriteUrl,
   ];
   const invalidUrl = runtimeUrls.find(
-    (url) => !url.startsWith(runtimePrefix) && !assetPrefixes.some((prefix) => url.startsWith(prefix)),
+    (url) => !isContainedReleaseUrl(url, runtimePrefix) && !assetPrefixes.some((prefix) => isContainedReleaseUrl(url, prefix)),
   );
   if (invalidUrl) {
     throw new TypeError(
