@@ -2318,8 +2318,11 @@ const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): 
           textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
           particleSystemMetadataUrl: unityObject(
             `${LANE_EFFECT_SOURCE}/lane_tap_blank_miss_view.prefab`,
+            // The emitting system of this prefab is the unsuffixed file; the
+            // _1 component is the dormant size-1.8 reference here (flipped
+            // relative to lane_tap_normal_view).
             "ParticleSystem",
-            1,
+            0,
           ),
           lifetime: 0.44999998807907104 / 2,
         },
