@@ -234,6 +234,8 @@ export interface OurNotesAssetManifest {
     noteEffectSkin: OurNotesNoteEffectSkin;
     authoredProfile: OurNotesAuthoredEffectProfile;
   };
+  /** Selected MasterLiveQualitySettings row (defaults to the native High row). */
+  liveQuality: OurNotesLiveQualitySettings;
   noteAtlas: SpriteAtlasManifest;
   /** Present only for skins whose flick arrows carry authored gradient settings. */
   arrowGradient?: OurNotesArrowGradientStyle;
@@ -260,6 +262,32 @@ export interface OurNotesRuntimeMediaManifest {
   fontAtlasTextureUrl?: string;
   hud: HudAssetManifest;
 }
+
+/** Native live quality values: 0 = High, 1 = Middle, 2 = Low. */
+export type OurNotesLiveQuality = 0 | 1 | 2;
+
+export interface OurNotesLiveQualitySettings {
+  quality: OurNotesLiveQuality;
+  /** LiveEffectCamera render scale for the HDR effect target. */
+  effectRenderingScale: number;
+  backgroundCameraFps: number;
+  live2dFps: number;
+}
+
+/** MasterLiveQualitySettings rows, keyed by `_quality`. */
+export const OUR_NOTES_LIVE_QUALITY_SETTINGS: Readonly<Record<OurNotesLiveQuality, OurNotesLiveQualitySettings>> = {
+  0: { quality: 0, effectRenderingScale: 1, backgroundCameraFps: 30, live2dFps: 30 },
+  1: { quality: 1, effectRenderingScale: 0.85, backgroundCameraFps: 25, live2dFps: 25 },
+  2: { quality: 2, effectRenderingScale: 0.71, backgroundCameraFps: 20, live2dFps: 20 },
+};
+
+export const OUR_NOTES_LIVE_QUALITIES: readonly OurNotesLiveQuality[] = [0, 1, 2];
+
+export const OUR_NOTES_LIVE_QUALITY_NAMES: Readonly<Record<OurNotesLiveQuality, Readonly<Record<string, string>>>> = {
+  0: { ja: "高", en: "High", "zh-TW": "高", "zh-CN": "高", ko: "높음" },
+  1: { ja: "中", en: "Middle", "zh-TW": "中", "zh-CN": "中", ko: "중간" },
+  2: { ja: "低", en: "Low", "zh-TW": "低", "zh-CN": "低", ko: "낮음" },
+};
 
 export type OurNotesNoteSkin = "skin001" | "skin002" | "skin003";
 
@@ -2212,6 +2240,10 @@ function resolveAuthoredEffectProfile(
   return currentQuality === 2 ? "light" : "full";
 }
 
+/** An omitted quality is the High row; resolveAuthoredEffectProfile has already rejected non-integers. */
+const liveQualityOf = (currentQuality: number | undefined): OurNotesLiveQuality =>
+  currentQuality === 1 || currentQuality === 2 ? currentQuality : 0;
+
 function noteSkinSprites(skin: OurNotesNoteSkin): SpriteMetadataRef[] {
   return Object.entries(OUR_NOTES_BUNDLED_NOTE_ATLASES[skin].spriteMetadata).map(([name, metadata]) => ({
     name,
@@ -2243,6 +2275,7 @@ const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): 
       noteEffectSkin,
       authoredProfile,
     },
+    liveQuality: OUR_NOTES_LIVE_QUALITY_SETTINGS[liveQualityOf(runtimeMedia.currentQuality)],
     noteAtlas: {
       id: noteSkin,
       textureUrl: bundledNoteAtlas.textureUrl,

@@ -679,7 +679,9 @@ export class RenderFrameBuilder {
       }
     }
     const laneKind = nativeLaneEffectKind(event.note);
-    if (laneKind && event.judgement >= NoteSimulateJudgement.Bad && event.judgement <= NoteSimulateJudgement.Just)
+    // LiveLaneEffectView.UpdateFrame gates lane effects on judgements 3..6
+    // (Good..Just); a Bad neither lights the lane nor plays a lane fill.
+    if (laneKind && event.judgement >= NoteSimulateJudgement.Good && event.judgement <= NoteSimulateJudgement.Just)
       this.effects.push({
         event,
         spawnedAtMs: timeMs,
