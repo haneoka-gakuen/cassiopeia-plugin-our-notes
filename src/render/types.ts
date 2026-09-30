@@ -188,7 +188,8 @@ export interface RenderSkillBanner {
   id: string | number;
   text: string;
   color?: string;
-  icon?: CanvasImageSource;
+  /** Renderer-owned image handle. */
+  icon?: unknown;
   age?: number;
   lifetime?: number;
 }
@@ -245,10 +246,10 @@ export interface RenderFrame {
   stage?: RenderStageState;
 }
 
-export interface OurNotesRendererOptions {
-  canvas: HTMLCanvasElement;
+export interface OurNotesRendererOptions<Canvas = unknown> {
+  canvas: Canvas;
   /** Optional transparent 2D overlay; keeps high-density HUD out of WebGL. */
-  hudCanvas?: HTMLCanvasElement;
+  hudCanvas?: Canvas;
   assets: OurNotesAssetManifest;
   laneCount?: number;
   stageWidth?: number;
