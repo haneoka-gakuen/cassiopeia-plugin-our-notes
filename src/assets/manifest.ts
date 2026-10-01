@@ -114,6 +114,8 @@ export interface Effect001ParticleSystemAssetRef {
    * height. Chart applies this only to native billboard particle systems.
    */
   rendererMaxParticleSize: number;
+  /** Authored renderer material _TintColor; absent uses the established texture default. */
+  materialTint?: readonly [number, number, number, number];
   /** The source system uses the effect.bundle wall mesh instead of a billboard. */
   renderer?: "billboard" | "wallMesh";
 }
@@ -134,6 +136,7 @@ export interface Effect001SpriteAssetRef {
   localScale: readonly [number, number, number];
   localRotationX: number;
   flipX?: boolean;
+  materialTint?: readonly [number, number, number, number];
 }
 
 export interface Effect001PrefabAssetRef {
@@ -294,11 +297,21 @@ export const OUR_NOTES_NOTE_SE_TYPE_NAMES: Readonly<Record<OurNotesNoteSeType, s
 };
 
 export type NoteSoundAssetKey =
-  "good" | "great" | "perfect" | "flick" | "flickDirection" | "slide" | "just" | "trace" | `type${OurNotesNoteSeType}`;
+  | "good"
+  | "great"
+  | "perfect"
+  | "flick"
+  | "flickDirection"
+  | "slide"
+  | "just"
+  | "trace"
+  | `type${OurNotesNoteSeType}`;
 
 export interface NoteSoundAssetLayer {
   url: string;
   gain: number;
+  loopStartSeconds?: number;
+  loopEndSeconds?: number;
 }
 
 export type NoteSoundAsset = string | ReadonlyArray<NoteSoundAssetLayer>;
@@ -313,8 +326,7 @@ export interface OurNotesArrowGradientSettings {
 /**
  * skin003 ArrowGradientSettings / ArrowGradientSettingsLeft/Right: the
  * Sirius/ArrowGradientCenter shader sweeps a brightness band along each
- * flick arrow with a per-direction band width; the compiled shader is not
- * text-extractable, so the renderer recreates the sweep from these values.
+ * flick arrow with a per-direction band width and minimum alpha.
  */
 export interface OurNotesArrowGradientStyle {
   readonly durationSeconds: number;
@@ -397,7 +409,7 @@ export const OUR_NOTES_NOTE_SKINS: readonly OurNotesNoteSkin[] = ["skin001", "sk
 
 export const OUR_NOTES_NOTE_SKIN_NAMES: Readonly<Record<OurNotesNoteSkin, Readonly<Record<string, string>>>> = {
   skin001: { ja: "アワーノーツ", en: "Our Notes", "zh-TW": "交織的樂章", "zh-CN": "交织的乐章", ko: "아워 노트" },
-  skin002: { ja: "サイバー", en: "Cyber", "zh-TW": "賽博", "zh-CN": "赛博", ko: "사이버" },
+  skin002: { ja: "ガルパ", en: "Garupa", "zh-TW": "邦邦", "zh-CN": "少女乐团派对", ko: "걸파" },
   skin003: { ja: "ハニカム", en: "Honeycomb", "zh-TW": "Honeycomb", "zh-CN": "蜂巢", ko: "허니콤" },
 };
 
@@ -724,7 +736,15 @@ function noteSoundForType(
   const cue = OUR_NOTES_NOTE_SE_CUES[group][type];
   if (typeof cue === "string") {
     return type === 7
-      ? [{ url: noteSound(runtimeRoot, cue), gain: NOTE_SE_HELD_GAINS[group] }]
+      ? [
+          {
+            url: noteSound(runtimeRoot, cue),
+            gain: NOTE_SE_HELD_GAINS[group],
+            ...(group === 3 || group === 4
+              ? { loopStartSeconds: 0, loopEndSeconds: (group === 3 ? 88065 : 86017) / 48000 }
+              : {}),
+          },
+        ]
       : noteSound(runtimeRoot, cue);
   }
   // Preserve the formal default layer ratio and apply the confirmed sequence gain.
@@ -1483,12 +1503,20 @@ function lightParticle(
       | "rendererMaxParticleSize"
       | "renderer"
       | "animationPath"
+      | "materialTint"
     >
   > = {},
 ): Effect001ParticleSystemAssetRef {
   return {
     ...effectParticle(root, file, name, texture, localPosition, options),
     metadataUrl: effect001LightRoot(root, file),
+    materialTint:
+      options.materialTint ??
+      (texture === "wall"
+        ? [0.5471698045730591, 0.5471698045730591, 0.5471698045730591, 1]
+        : texture === "centerPillar" || texture === "centerPillar02"
+          ? [0.4433962106704712, 0.4433962106704712, 0.4433962106704712, 1]
+          : [1, 1, 1, 1]),
   };
 }
 
@@ -1505,6 +1533,7 @@ function lightSprite(
   return {
     ...effectSprite(root, file, name, baseColor, baseSize, localPosition, baseActive, flipX),
     metadataUrl: effect001LightRoot(root, file),
+    materialTint: [1, 1, 1, 1],
   };
 }
 
@@ -2116,7 +2145,9 @@ export const EFFECT001LIGHT_PREFABS: Readonly<Record<keyof typeof EFFECT001_PREF
           shapeWidthOffset: -0.02,
         },
       ),
-      lightParticle("note_slide_connect_light.prefab", "ParticleSystem_3.asset", "ef_splash", "star", [0, 0, 0]),
+      lightParticle("note_slide_connect_light.prefab", "ParticleSystem_3.asset", "ef_splash", "star", [0, 0, 0], {
+        materialTint: [2.9960782527923584, 2.9960782527923584, 2.9960782527923584, 0.615686297416687],
+      }),
       lightParticle("note_slide_connect_light.prefab", "ParticleSystem.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
         animationPath: "ef_splash/ef_wall_center",
         localScale: [4.9, 1, 1],

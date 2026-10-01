@@ -9,6 +9,7 @@ import type {
   SessionSnapshot,
 } from "@haneoka/cassiopeia";
 import { isRenderLaneEffectKind } from "../render/types.js";
+import type { OurNotesNoteEffectSkin } from "../assets/manifest.js";
 import type {
   RenderDirection,
   RenderFrame,
@@ -90,6 +91,7 @@ export const DEFAULT_RENDER_SETTINGS: RenderSettings = {
 export interface RenderFrameBuilderOptions {
   /** Stable seed for replay capture; live sessions use platform entropy. */
   particleSeed?: number;
+  noteEffectSkin?: OurNotesNoteEffectSkin;
 }
 
 /**
@@ -485,12 +487,13 @@ function nativeRoundToEven(value: number): number {
 const NATIVE_LANE_EFFECT_LIFETIME = 0.44999998807907104 / 2;
 
 /**
- * Animator stop times from the tap/slide/flick judgement clips selected by
+ * Durations of the tap/slide/flick judgement clips selected by
  * ConvertAnimType. Miss/Wait/Pass map to AnimType.None.
  */
 export function nativeParticleEffectLifetime(
   kind: RenderParticleEffect["kind"],
   judgement: NoteSimulateJudgement,
+  noteEffectSkin: OurNotesNoteEffectSkin = "effect001",
 ): number {
   if (
     judgement !== NoteSimulateJudgement.Bad &&
@@ -502,7 +505,11 @@ export function nativeParticleEffectLifetime(
     return 0;
   if (kind === "slide-loop") return Number.POSITIVE_INFINITY;
   const perfect = judgement === NoteSimulateJudgement.Perfect || judgement === NoteSimulateJudgement.Just;
-  if (kind === "flick") return perfect ? 5 / 12 : 2 / 3;
+  if (kind === "flick") {
+    if (perfect) return noteEffectSkin === "effect001Simple" ? 3 / 4 : 5 / 12;
+    if (judgement === NoteSimulateJudgement.Bad) return noteEffectSkin === "effect001Simple" ? 5 / 12 : 7 / 12;
+    return 1 / 2;
+  }
   if (kind === "slide" || kind === "connect" || kind === "trace") {
     return perfect ? 7 / 12 : 5 / 12;
   }
@@ -547,6 +554,7 @@ export class RenderFrameBuilder {
   private readonly sampleStart: PreparedHoldPoint = { timeMs: 0, pos: 0, size: 0 };
   private readonly sampleEnd: PreparedHoldPoint = { timeMs: 0, pos: 0, size: 0 };
   private readonly particleSeedEntropy: number;
+  private readonly noteEffectSkin: OurNotesNoteEffectSkin;
   private effectHead = 0;
   private hudJudgementHead = 0;
   private laneInputEffectHead = 0;
@@ -565,6 +573,7 @@ export class RenderFrameBuilder {
     private readonly chart: ChartDocument,
     options: RenderFrameBuilderOptions = {},
   ) {
+    this.noteEffectSkin = options.noteEffectSkin ?? "effect001";
     this.particleSeedEntropy =
       options.particleSeed === undefined ? automaticParticleSeedEntropy() : mixParticleSeed(options.particleSeed);
     this.visualTimeMap = new VisualTimeMap(chart.timeScaleChanges);
@@ -663,7 +672,7 @@ export class RenderFrameBuilder {
     }
     const kind = nativeParticleEffectKind(event.note);
     if (kind) {
-      const lifetime = nativeParticleEffectLifetime(kind, event.judgement);
+      const lifetime = nativeParticleEffectLifetime(kind, event.judgement, this.noteEffectSkin);
       if (lifetime > 0) {
         const activation = this.nextParticleEffectActivation++;
         this.effects.push({
