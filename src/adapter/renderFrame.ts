@@ -1026,6 +1026,9 @@ export class RenderFrameBuilder {
           continue;
         }
 
+        // The native finish event runs at the clip's float32 length.
+        if (Math.fround(age) >= Math.fround(effect.lifetime)) continue;
+
         const outputIndex = particles.length;
         const output = buffers
           ? (buffers.particlePool[outputIndex] ??= { id: effect.id, kind: effect.kind, lane: 0, age: 0 })
