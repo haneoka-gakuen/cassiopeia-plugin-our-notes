@@ -139,6 +139,7 @@ interface PreparedLine {
   /** Persistent SlideLoop activation state; a new activation needs a new auto seed. */
   particleEffectActive: boolean;
   particleEffectSeed: number | undefined;
+  particleEffectStartedAtMs: number | undefined;
 }
 
 interface PreparedSimultaneousLine {
@@ -650,6 +651,7 @@ export class RenderFrameBuilder {
         pointEndCursor: 0,
         particleEffectActive: false,
         particleEffectSeed: undefined,
+        particleEffectStartedAtMs: undefined,
       };
     });
   }
@@ -733,6 +735,7 @@ export class RenderFrameBuilder {
       line.pointEndCursor = 0;
       line.particleEffectActive = false;
       line.particleEffectSeed = undefined;
+      line.particleEffectStartedAtMs = undefined;
     }
     this.lastTimeMs = 0;
   }
@@ -1109,12 +1112,20 @@ export class RenderFrameBuilder {
         if (line.kind !== "long" || !snapshot.lineState.isActive(line.id) || line.authored.length < 2) {
           line.particleEffectActive = false;
           line.particleEffectSeed = undefined;
+          line.particleEffectStartedAtMs = undefined;
           continue;
         }
-        if (!line.particleEffectActive || line.particleEffectSeed === undefined) {
+        if (
+          !line.particleEffectActive ||
+          line.particleEffectSeed === undefined ||
+          line.particleEffectStartedAtMs === undefined
+        ) {
           const activation = this.nextParticleEffectActivation++;
           line.particleEffectActive = true;
           line.particleEffectSeed = mixParticleSeed(this.particleSeedEntropy ^ Math.imul(activation + 1, 0x9e3779b9));
+          // Native acquisition enables a newly active prefab; pooled objects
+          // keep no Animator state on disable. Its clock starts at activation.
+          line.particleEffectStartedAtMs = timeMs;
         }
         const point = samplePreparedLine(line, visualTimeMs, this.sampleStart);
         const outputIndex = particles.length;
@@ -1126,7 +1137,7 @@ export class RenderFrameBuilder {
         output.kind = "slide-loop";
         output.lane = mirror ? mirrorLane(point.pos, point.size) : point.pos;
         output.width = point.size;
-        output.age = Math.max(0, (timeMs - line.realStartTimeMs) / 1000);
+        output.age = Math.max(0, (timeMs - line.particleEffectStartedAtMs) / 1000);
         output.judgement = "perfect";
         output.lifetime = undefined;
         output.intensity = noteSize;
@@ -1136,6 +1147,12 @@ export class RenderFrameBuilder {
         // after the line is stopped and activated again.
         output.seed = line.particleEffectSeed;
         particles.push(output);
+      }
+    } else {
+      for (const line of this.preparedLines) {
+        line.particleEffectActive = false;
+        line.particleEffectSeed = undefined;
+        line.particleEffectStartedAtMs = undefined;
       }
     }
 
