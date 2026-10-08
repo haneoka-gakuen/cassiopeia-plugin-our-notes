@@ -1,5 +1,34 @@
 import type { OurNotesAssetManifest, TmpSdfFontAssetManifest } from "../assets/manifest.js";
 
+/** Visual-only native option units (1..14). Replace together with its compiled chart epoch. */
+export interface NativeChartVisualProfiles {
+  notes: readonly { nativeNoteId: number; noteSpeed: number }[];
+  lines: readonly { nativeLineId: number; noteSpeed: number }[];
+}
+
+export interface NativeChartVisualProfileDiagnostic {
+  code:
+    | "invalid-profiles"
+    | "invalid-speed"
+    | "duplicate-id"
+    | "unknown-id"
+    | "generated-note"
+    | "line-speed-conflict"
+    | "shared-note-speed-conflict";
+  target: "notes" | "lines";
+  nativeId?: number;
+  message: string;
+}
+
+export class NativeChartVisualProfilesError extends Error {
+  readonly diagnostics: readonly NativeChartVisualProfileDiagnostic[];
+  constructor(diagnostics: readonly NativeChartVisualProfileDiagnostic[]) {
+    super("Invalid native chart visual profiles");
+    this.name = "NativeChartVisualProfilesError";
+    this.diagnostics = diagnostics;
+  }
+}
+
 export type RenderNoteKind =
   "tap" | "flick" | "flick-left" | "flick-right" | "slide-start" | "slide-node" | "slide-end" | "trace" | "guide";
 
@@ -32,6 +61,9 @@ export interface RenderSimultaneousLine {
   leftCenter: number;
   rightCenter: number;
   approach: number;
+  /** Independent native view approaches when a same-beat line connects mixed visual profiles. */
+  leftApproach?: number;
+  rightApproach?: number;
   visible?: boolean;
 }
 

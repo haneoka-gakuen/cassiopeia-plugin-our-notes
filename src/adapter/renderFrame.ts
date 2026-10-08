@@ -8,7 +8,7 @@ import type {
   LaneInputEffectEvent,
   SessionSnapshot,
 } from "@haneoka/cassiopeia";
-import { isRenderLaneEffectKind } from "../render/types.js";
+import { isRenderLaneEffectKind, NativeChartVisualProfilesError } from "../render/types.js";
 import type { OurNotesNoteEffectSkin } from "../assets/manifest.js";
 import type {
   RenderDirection,
@@ -22,6 +22,8 @@ import type {
   RenderParticleEffect,
   RenderPathPoint,
   RenderSimultaneousLine,
+  NativeChartVisualProfiles,
+  NativeChartVisualProfileDiagnostic,
 } from "../render/types.js";
 
 export interface RenderSettings {
@@ -92,6 +94,159 @@ export interface RenderFrameBuilderOptions {
   /** Stable seed for replay capture; live sessions use platform entropy. */
   particleSeed?: number;
   noteEffectSkin?: OurNotesNoteEffectSkin;
+  visualProfiles?: NativeChartVisualProfiles;
+}
+
+interface ResolvedVisualProfiles {
+  notes: ReadonlyMap<number, number>;
+  lines: ReadonlyMap<number, number>;
+}
+
+/** Resolve once; aliases are already compiled by the authoring host, never read from private extensions. */
+function resolveVisualProfiles(
+  chart: ChartDocument,
+  profiles: NativeChartVisualProfiles | undefined,
+): ResolvedVisualProfiles | undefined {
+  if (profiles === undefined) return;
+  const diagnostics: NativeChartVisualProfileDiagnostic[] = [];
+  if (!profiles || !Array.isArray(profiles.notes) || !Array.isArray(profiles.lines)) {
+    throw new NativeChartVisualProfilesError([
+      { code: "invalid-profiles", target: "notes", message: "notes and lines must be arrays" },
+    ]);
+  }
+  const noteById = new Map(chart.notes.map((note) => [note.id, note]));
+  const lineById = new Map(chart.lines.map((line) => [line.id, line]));
+  const notes = new Map<number, number>();
+  const lines = new Map<number, number>();
+  const generated = (note: ChartNote) =>
+    note.indexInLine === null &&
+    (note.operateType === NoteOperateType.Combo || note.operateType === NoteOperateType.ComboSkip);
+  for (const target of ["notes", "lines"] as const) {
+    const seen = new Set<number>();
+    for (const entry of profiles[target]) {
+      const id =
+        target === "notes"
+          ? (entry as NativeChartVisualProfiles["notes"][number])?.nativeNoteId
+          : (entry as NativeChartVisualProfiles["lines"][number])?.nativeLineId;
+      if (!Number.isSafeInteger(id) || id < 0 || !(target === "notes" ? noteById : lineById).has(id)) {
+        diagnostics.push({
+          code: "unknown-id",
+          target,
+          nativeId: id,
+          message: "ID does not belong to this compiled chart",
+        });
+        continue;
+      }
+      if (seen.has(id))
+        diagnostics.push({ code: "duplicate-id", target, nativeId: id, message: "Each native ID must occur once" });
+      seen.add(id);
+      if (!Number.isFinite(entry.noteSpeed) || entry.noteSpeed < 1 || entry.noteSpeed > 14) {
+        diagnostics.push({
+          code: "invalid-speed",
+          target,
+          nativeId: id,
+          message: "noteSpeed must be finite native option units in 1..14",
+        });
+        continue;
+      }
+      if (target === "notes" && generated(noteById.get(id)!)) {
+        diagnostics.push({
+          code: "generated-note",
+          target,
+          nativeId: id,
+          message: "Generated Combo inherits its native line profile",
+        });
+        continue;
+      }
+      (target === "notes" ? notes : lines).set(id, entry.noteSpeed);
+    }
+  }
+  if (diagnostics.length) throw new NativeChartVisualProfilesError(diagnostics);
+  if (notes.size === 0 && lines.size === 0) return;
+  const explicitNotes = new Map(notes);
+  const memberships = new Map<number, Set<number>>();
+  for (const line of chart.lines)
+    for (const id of line.noteIds) {
+      let set = memberships.get(id);
+      if (!set) memberships.set(id, (set = new Set()));
+      set.add(line.id);
+    }
+  for (const note of chart.notes)
+    for (const id of note.lineIds) {
+      if (!lineById.has(id)) continue;
+      let set = memberships.get(note.id);
+      if (!set) memberships.set(note.id, (set = new Set()));
+      set.add(id);
+    }
+  const participantsByLine = new Map<number, ChartNote[]>();
+  for (const note of chart.notes) {
+    if (generated(note)) continue;
+    for (const id of memberships.get(note.id) ?? []) {
+      let participants = participantsByLine.get(id);
+      if (!participants) participantsByLine.set(id, (participants = []));
+      participants.push(note);
+    }
+  }
+  // A line header supplies all unspecified nodes. Without a header every
+  // participating node must explicitly agree, since the global speed can change.
+  for (const line of chart.lines) {
+    const participants = participantsByLine.get(line.id) ?? [];
+    const header = lines.get(line.id);
+    const speeds = new Set(participants.map((note) => explicitNotes.get(note.id) ?? header));
+    if (speeds.size > 1 || (header !== undefined && [...speeds].some((speed) => speed !== header))) {
+      diagnostics.push({
+        code: "line-speed-conflict",
+        target: "lines",
+        nativeId: line.id,
+        message: "Line header and all participating nodes must have one effective speed",
+      });
+    } else {
+      const speed = header ?? speeds.values().next().value;
+      if (speed !== undefined) lines.set(line.id, speed);
+    }
+  }
+  for (const note of chart.notes) {
+    const owners = memberships.get(note.id) ?? new Set<number>();
+    if (owners.size === 0) continue;
+    const speeds = new Set([...owners].map((id) => lines.get(id)));
+    if (speeds.size > 1) {
+      diagnostics.push({
+        code: "shared-note-speed-conflict",
+        target: "notes",
+        nativeId: note.id,
+        message: "Shared native note belongs to lines with different effective speeds",
+      });
+      continue;
+    }
+    const speed = speeds.values().next().value;
+    if (speed !== undefined) notes.set(note.id, speed);
+  }
+  if (diagnostics.length) throw new NativeChartVisualProfilesError(diagnostics);
+  return { notes, lines };
+}
+
+interface ProfileNotePartition {
+  speed: number | undefined;
+  items: { timeMs: number; index: number }[];
+  first: number;
+  last: number;
+  windowStart?: number;
+}
+
+interface ProfilePairPartition {
+  leftSpeed: number | undefined;
+  rightSpeed: number | undefined;
+  items: { timeMs: number; index: number }[];
+  first: number;
+  last: number;
+  windowStart?: number;
+}
+
+interface ProfilePairEndpoints {
+  leftTimeMs: number;
+  rightTimeMs: number;
+  leftSpeed: number | undefined;
+  rightSpeed: number | undefined;
 }
 
 /**
@@ -556,6 +711,14 @@ export class RenderFrameBuilder {
   private readonly sampleEnd: PreparedHoldPoint = { timeMs: 0, pos: 0, size: 0 };
   private readonly particleSeedEntropy: number;
   private readonly noteEffectSkin: OurNotesNoteEffectSkin;
+  private visualProfiles: ResolvedVisualProfiles | undefined;
+  private readonly notePartitions: ProfileNotePartition[] = [];
+  private readonly pairPartitions: ProfilePairPartition[] = [];
+  private readonly profileNoteIndices: number[] = [];
+  private readonly profilePairIndices: number[] = [];
+  private readonly profileViewTimes = new Map<number, number>();
+  private profileNoteInverse: Float64Array | undefined;
+  private readonly profilePairEndpoints: ProfilePairEndpoints[] = [];
   private effectHead = 0;
   private hudJudgementHead = 0;
   private laneInputEffectHead = 0;
@@ -574,6 +737,7 @@ export class RenderFrameBuilder {
     private readonly chart: ChartDocument,
     options: RenderFrameBuilderOptions = {},
   ) {
+    this.visualProfiles = resolveVisualProfiles(chart, options.visualProfiles);
     this.noteEffectSkin = options.noteEffectSkin ?? "effect001";
     this.particleSeedEntropy =
       options.particleSeed === undefined ? automaticParticleSeedEntropy() : mixParticleSeed(options.particleSeed);
@@ -654,6 +818,131 @@ export class RenderFrameBuilder {
         particleEffectStartedAtMs: undefined,
       };
     });
+    this.configureVisualPartitions();
+  }
+
+  /** Replace visual profiles on this same compiled chart; keep judgement/HUD/effect timelines intact. */
+  setVisualProfiles(profiles: NativeChartVisualProfiles | undefined): void {
+    const resolved = resolveVisualProfiles(this.chart, profiles);
+    // Validation finishes before any current valid window/state is replaced.
+    this.visualProfiles = resolved;
+    this.notePartitions.length = 0;
+    this.pairPartitions.length = 0;
+    this.profilePairEndpoints.length = 0;
+    this.profileNoteIndices.length = 0;
+    this.profilePairIndices.length = 0;
+    this.profileViewTimes.clear();
+    this.profileNoteInverse = undefined;
+    this.firstVisibleNoteCursor = 0;
+    this.lastVisibleNoteCursor = 0;
+    this.firstVisibleSimultaneousLineCursor = 0;
+    this.lastVisibleSimultaneousLineCursor = 0;
+    for (const line of this.reusable?.simultaneousLinePool ?? []) {
+      delete line.leftApproach;
+      delete line.rightApproach;
+    }
+    this.configureVisualPartitions();
+  }
+
+  private configureVisualPartitions(): void {
+    if (this.visualProfiles) {
+      const visualNoteById = new Map(this.renderableNotes.map((note) => [note.id, note]));
+      this.profileNoteInverse = new Float64Array(this.renderableNotes.length);
+      const noteGroups = new Map<number | undefined, ProfileNotePartition>();
+      this.renderableNotes.forEach((note, index) => {
+        const speed = this.visualProfiles!.notes.get(note.id);
+        let group = noteGroups.get(speed);
+        if (!group) noteGroups.set(speed, (group = { speed, items: [], first: 0, last: 0 }));
+        group.items.push({ index, timeMs: note.timeMs });
+      });
+      this.notePartitions.push(...noteGroups.values());
+      const pairGroups = new Map<string, ProfilePairPartition>();
+      this.preparedSimultaneousLines.forEach((line, index) => {
+        const first = visualNoteById.get(line.firstNoteId)!;
+        const second = visualNoteById.get(line.secondNoteId)!;
+        const [left, right] =
+          first.pos + first.size / 2 < second.pos + second.size / 2 ? [first, second] : [second, first];
+        const leftSpeed = this.visualProfiles!.notes.get(left.id);
+        const rightSpeed = this.visualProfiles!.notes.get(right.id);
+        this.profilePairEndpoints.push({ leftTimeMs: left.timeMs, rightTimeMs: right.timeMs, leftSpeed, rightSpeed });
+        const key = `${leftSpeed ?? "global"}:${rightSpeed ?? "global"}`;
+        let group = pairGroups.get(key);
+        if (!group) pairGroups.set(key, (group = { leftSpeed, rightSpeed, items: [], first: 0, last: 0 }));
+        group.items.push({ index, timeMs: line.timeMs });
+      });
+      this.pairPartitions.push(...pairGroups.values());
+    }
+  }
+
+  private profileViewTime(speed: number | undefined, globalViewTimeMs: number, curve: number): number {
+    if (speed === undefined) return globalViewTimeMs;
+    let time = this.profileViewTimes.get(speed);
+    if (time === undefined) {
+      time = noteViewTimeSeconds(speed, curve) * 1000;
+      this.profileViewTimes.set(speed, time);
+    }
+    return time;
+  }
+
+  private collectProfileNotes(visualTimeMs: number, globalViewTimeMs: number, curve: number): number[] {
+    const indices = this.profileNoteIndices;
+    indices.length = 0;
+    for (const group of this.notePartitions) {
+      const viewTimeMs = this.profileViewTime(group.speed, globalViewTimeMs, curve);
+      this.profileWindow(group, visualTimeMs - viewTimeMs * 0.16, visualTimeMs + viewTimeMs * 1.1);
+      for (let i = group.first; i < group.last; i++) {
+        const index = group.items[i]!.index;
+        indices.push(index);
+        this.profileNoteInverse![index] = 1 / viewTimeMs;
+      }
+    }
+    // Global index is the original time/ID ordering across all partitions.
+    indices.sort((a, b) => a - b);
+    return indices;
+  }
+
+  private collectProfilePairs(visualTimeMs: number, globalViewTimeMs: number, curve: number): number[] {
+    const indices = this.profilePairIndices;
+    indices.length = 0;
+    for (const group of this.pairPartitions) {
+      const leftTime = this.profileViewTime(group.leftSpeed, globalViewTimeMs, curve);
+      const rightTime = this.profileViewTime(group.rightSpeed, globalViewTimeMs, curve);
+      this.profileWindow(group, visualTimeMs, visualTimeMs + Math.max(leftTime, rightTime) * 1.1);
+      for (let i = group.first; i < group.last; i++) {
+        const index = group.items[i]!.index;
+        const endpoints = this.profilePairEndpoints[index]!;
+        // Never connect a visible slow endpoint to an as-yet invisible fast one.
+        if (
+          endpoints.leftTimeMs < visualTimeMs ||
+          endpoints.rightTimeMs < visualTimeMs ||
+          endpoints.leftTimeMs > visualTimeMs + leftTime * 1.1 ||
+          endpoints.rightTimeMs > visualTimeMs + rightTime * 1.1
+        )
+          continue;
+        indices.push(index);
+      }
+    }
+    indices.sort((a, b) => a - b);
+    return indices;
+  }
+
+  private profileWindow(group: ProfileNotePartition | ProfilePairPartition, firstTime: number, lastTime: number): void {
+    // Large seek/first frame uses bounded searches; ordinary ticks advance each profile cursor.
+    if (group.windowStart === undefined || Math.abs(firstTime - group.windowStart) > lastTime - firstTime) {
+      group.first = lowerBoundTime(group.items, firstTime);
+      let low = group.first;
+      let high = group.items.length;
+      while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (group.items[middle]!.timeMs <= lastTime) low = middle + 1;
+        else high = middle;
+      }
+      group.last = low;
+    } else {
+      group.first = adjustLowerBoundCursor(group.items, firstTime, group.first);
+      group.last = adjustUpperBoundCursor(group.items, lastTime, group.last);
+    }
+    group.windowStart = firstTime;
   }
 
   addJudgement(event: JudgementEvent, timeMs: number): void {
@@ -730,6 +1019,11 @@ export class RenderFrameBuilder {
     this.lastVisibleNoteCursor = 0;
     this.firstVisibleSimultaneousLineCursor = 0;
     this.lastVisibleSimultaneousLineCursor = 0;
+    for (const partition of [...this.notePartitions, ...this.pairPartitions]) {
+      partition.first = 0;
+      partition.last = 0;
+      partition.windowStart = undefined;
+    }
     for (const line of this.preparedLines) {
       line.pointStartCursor = 0;
       line.pointEndCursor = 0;
@@ -769,20 +1063,31 @@ export class RenderFrameBuilder {
     const inverseViewTimeMs = 1 / viewTimeMs;
     const earliestVisibleTime = visualTimeMs - viewTimeMs * 0.16;
     const latestVisibleTime = visualTimeMs + viewTimeMs * 1.1;
-    this.firstVisibleNoteCursor = adjustLowerBoundCursor(
-      this.renderableNotes,
-      earliestVisibleTime,
-      this.firstVisibleNoteCursor,
-    );
-    this.lastVisibleNoteCursor = adjustUpperBoundCursor(
-      this.renderableNotes,
-      latestVisibleTime,
-      this.lastVisibleNoteCursor,
-    );
+    if (!this.visualProfiles) {
+      this.firstVisibleNoteCursor = adjustLowerBoundCursor(
+        this.renderableNotes,
+        earliestVisibleTime,
+        this.firstVisibleNoteCursor,
+      );
+      this.lastVisibleNoteCursor = adjustUpperBoundCursor(
+        this.renderableNotes,
+        latestVisibleTime,
+        this.lastVisibleNoteCursor,
+      );
+    }
+    if (this.visualProfiles) this.profileViewTimes.clear();
+    const profiledNotes = this.visualProfiles
+      ? this.collectProfileNotes(visualTimeMs, viewTimeMs, noteSpeedCurve)
+      : undefined;
     const buffers = reuse ? this.reusableBuffers() : undefined;
     const notes: RenderNote[] = buffers?.notes ?? [];
     notes.length = 0;
-    for (let index = this.firstVisibleNoteCursor; index < this.lastVisibleNoteCursor; index++) {
+    for (
+      let cursor = profiledNotes ? 0 : this.firstVisibleNoteCursor;
+      cursor < (profiledNotes?.length ?? this.lastVisibleNoteCursor);
+      cursor++
+    ) {
+      const index = profiledNotes ? profiledNotes[cursor]! : cursor;
       const note = this.renderableNotes[index]!;
       // After judgement, UpdaterBase.SetLastJudgement sets
       // NoteSimulateState.Done (6). On the next view update,
@@ -791,7 +1096,8 @@ export class RenderFrameBuilder {
       // consumed note therefore must not keep moving below the judgement line
       // while its impact effect is playing.
       if (snapshot.noteState.isProcessed(note.id)) continue;
-      const approach = (note.timeMs - visualTimeMs) * inverseViewTimeMs;
+      const approach =
+        (note.timeMs - visualTimeMs) * (profiledNotes ? this.profileNoteInverse![index]! : inverseViewTimeMs);
       const outputIndex = notes.length;
       const output = buffers
         ? (buffers.notePool[outputIndex] ??= { id: note.id, kind: "tap", lane: 0, width: 0, approach: 0 })
@@ -815,21 +1121,27 @@ export class RenderFrameBuilder {
       // serialized 0.025-unit Y size remains fixed; only X is resized by
       // LivePairNoteLineView.SetProgress.
       const firstLineTime = Math.max(visualTimeMs, earliestVisibleTime);
-      this.firstVisibleSimultaneousLineCursor = adjustLowerBoundCursor(
-        this.preparedSimultaneousLines,
-        firstLineTime,
-        this.firstVisibleSimultaneousLineCursor,
-      );
-      this.lastVisibleSimultaneousLineCursor = adjustUpperBoundCursor(
-        this.preparedSimultaneousLines,
-        latestVisibleTime,
-        this.lastVisibleSimultaneousLineCursor,
-      );
+      if (!this.visualProfiles) {
+        this.firstVisibleSimultaneousLineCursor = adjustLowerBoundCursor(
+          this.preparedSimultaneousLines,
+          firstLineTime,
+          this.firstVisibleSimultaneousLineCursor,
+        );
+        this.lastVisibleSimultaneousLineCursor = adjustUpperBoundCursor(
+          this.preparedSimultaneousLines,
+          latestVisibleTime,
+          this.lastVisibleSimultaneousLineCursor,
+        );
+      }
+      const profiledPairs = this.visualProfiles
+        ? this.collectProfilePairs(visualTimeMs, viewTimeMs, noteSpeedCurve)
+        : undefined;
       for (
-        let index = this.firstVisibleSimultaneousLineCursor;
-        index < this.lastVisibleSimultaneousLineCursor;
-        index++
+        let cursor = profiledPairs ? 0 : this.firstVisibleSimultaneousLineCursor;
+        cursor < (profiledPairs?.length ?? this.lastVisibleSimultaneousLineCursor);
+        cursor++
       ) {
+        const index = profiledPairs ? profiledPairs[cursor]! : cursor;
         const line = this.preparedSimultaneousLines[index]!;
         if (snapshot.noteState.isProcessed(line.firstNoteId) || snapshot.noteState.isProcessed(line.secondNoteId))
           continue;
@@ -846,6 +1158,23 @@ export class RenderFrameBuilder {
         output.leftCenter = mirror ? LANE_COUNT - line.rightCenter : line.leftCenter;
         output.rightCenter = mirror ? LANE_COUNT - line.leftCenter : line.rightCenter;
         output.approach = (line.timeMs - visualTimeMs) * inverseViewTimeMs;
+        if (profiledPairs) {
+          const endpoints = this.profilePairEndpoints[index]!;
+          const leftApproach =
+            (endpoints.leftTimeMs - visualTimeMs) *
+            (1 / this.profileViewTime(endpoints.leftSpeed, viewTimeMs, noteSpeedCurve));
+          const rightApproach =
+            (endpoints.rightTimeMs - visualTimeMs) *
+            (1 / this.profileViewTime(endpoints.rightSpeed, viewTimeMs, noteSpeedCurve));
+          if (leftApproach === rightApproach) {
+            output.approach = leftApproach;
+            delete output.leftApproach;
+            delete output.rightApproach;
+          } else {
+            output.leftApproach = mirror ? rightApproach : leftApproach;
+            output.rightApproach = mirror ? leftApproach : rightApproach;
+          }
+        }
         simultaneousLines.push(output);
       }
     }
@@ -854,10 +1183,16 @@ export class RenderFrameBuilder {
     holds.length = 0;
     for (const line of this.preparedLines) {
       const authored = line.authored;
+      const lineViewTimeMs = this.visualProfiles
+        ? this.profileViewTime(this.visualProfiles.lines.get(line.id), viewTimeMs, noteSpeedCurve)
+        : viewTimeMs;
+      const lineInverseViewTimeMs = this.visualProfiles ? 1 / lineViewTimeMs : inverseViewTimeMs;
+      const lineEarliestVisibleTime = this.visualProfiles ? visualTimeMs - lineViewTimeMs * 0.16 : earliestVisibleTime;
+      const lineLatestVisibleTime = this.visualProfiles ? visualTimeMs + lineViewTimeMs * 1.1 : latestVisibleTime;
       if (
         authored.length < 2 ||
-        authored[authored.length - 1]!.timeMs < earliestVisibleTime ||
-        authored[0]!.timeMs > latestVisibleTime
+        authored[authored.length - 1]!.timeMs < lineEarliestVisibleTime ||
+        authored[0]!.timeMs > lineLatestVisibleTime
       )
         continue;
 
@@ -869,7 +1204,7 @@ export class RenderFrameBuilder {
       // current music time and synthesize the exact intersecting cross-section,
       // as the native mesh builder does.
       const visibleStartTime = Math.max(authored[0]!.timeMs, visualTimeMs);
-      const visibleEndTime = Math.min(authored[authored.length - 1]!.timeMs, latestVisibleTime);
+      const visibleEndTime = Math.min(authored[authored.length - 1]!.timeMs, lineLatestVisibleTime);
       if (visibleEndTime <= visibleStartTime) continue;
 
       const outputIndex = holds.length;
@@ -889,7 +1224,7 @@ export class RenderFrameBuilder {
         pointPool,
         samplePreparedLine(line, visibleStartTime, this.sampleStart),
         visualTimeMs,
-        inverseViewTimeMs,
+        lineInverseViewTimeMs,
         mirror,
         line,
       );
@@ -901,7 +1236,7 @@ export class RenderFrameBuilder {
           pointPool,
           line.points[pointIndex]!,
           visualTimeMs,
-          inverseViewTimeMs,
+          lineInverseViewTimeMs,
           mirror,
           line,
         );
@@ -911,7 +1246,7 @@ export class RenderFrameBuilder {
         pointPool,
         samplePreparedLine(line, visibleEndTime, this.sampleEnd),
         visualTimeMs,
-        inverseViewTimeMs,
+        lineInverseViewTimeMs,
         mirror,
         line,
       );

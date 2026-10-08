@@ -12,6 +12,14 @@ import type { ChartDocument, ChartLine, ChartNote, SsRawNote, SsRoot } from "@ha
 
 type Shape = Pick<ChartNote, "pos" | "size">;
 type CoincidenceType = "tap" | "flick" | "trace";
+
+/** Synchronous source bindings; treat raw input references as read-only. */
+export interface ChartBuildSourceObserver {
+  /** Every authored alias of a resolved note, including consumed guide singles. Generated Combo nodes are excluded. */
+  onSourceNote?(raw: SsRawNote, nativeId: number): void;
+  /** The original long/guide header and its created native line ID. */
+  onSourceLine?(raw: SsRawNote, lineId: number): void;
+}
 // These documents cross a Worker boundary and are rendered by multiple
 // canvas/UI layers. Keep a generous ceiling well above real live charts so an
 // untrusted score cannot turn a successful worker parse into a giant main
@@ -19,6 +27,7 @@ type CoincidenceType = "tap" | "flick" | "trace";
 const MAX_RENDERABLE_NOTES = 25_000;
 const MAX_GENERATED_COMBO_NOTES = 20_000;
 interface CoincidenceNote {
+  raw: SsRawNote;
   type: CoincidenceType;
   direction: NoteDirection;
   critical: boolean;
@@ -108,6 +117,7 @@ function buildGuideCoincidence(notes: SsRawNote[]): {
     const key = nativeOverlapKey(note.t, note.pos, note.size ?? 6);
     if (!guideStartKeys.has(key) || coincidence.has(key)) continue;
     coincidence.set(key, {
+      raw: note,
       type: note.type === "flick" ? "flick" : note.type === "trace" ? "trace" : "tap",
       direction: mapDirection(note),
       critical: note.crit === true,
@@ -313,7 +323,7 @@ function interpolateAuthoredLine(notes: ChartNote[], timeMs: number): Shape {
   return { pos, size: right - pos };
 }
 
-export function buildChart(root: SsRoot): ChartDocument {
+export function buildChart(root: SsRoot, observer?: ChartBuildSourceObserver): ChartDocument {
   const converter = new TickConverter(root.bpm, root.sig);
   const { types: coincidence, consumedSingles } = buildGuideCoincidence(root.notes);
   const notes: ChartNote[] = [];
@@ -373,7 +383,8 @@ export function buildChart(root: SsRoot): ChartDocument {
           ? NoteOperateType.Trace
           : NoteOperateType.Normal;
     const shape = { pos: typeof raw.pos === "number" ? raw.pos : 0, size: raw.size ?? 6 };
-    push(raw.t ?? 0, shape, operation, raw.crit === true, mapDirection(raw), null, null, null, null, true);
+    const note = push(raw.t ?? 0, shape, operation, raw.crit === true, mapDirection(raw), null, null, null, null, true);
+    observer?.onSourceNote?.(raw, note.id);
   }
 
   // TryMergeSlideEndpoint stores one NoteInfoData with a list of line IDs
@@ -420,6 +431,8 @@ export function buildChart(root: SsRoot): ChartDocument {
         );
       }
       if (isMergeableEndpoint(operation) && !mergedEndpoints.has(mergeKey)) mergedEndpoints.set(mergeKey, resolved);
+      observer?.onSourceNote?.(node, resolved.id);
+      if (coincident) observer?.onSourceNote?.(coincident.raw, resolved.id);
       return resolved.id;
     });
     lines.push({
@@ -428,6 +441,7 @@ export function buildChart(root: SsRoot): ChartDocument {
       critical: raw.crit ?? nodes.some((node) => node.crit === true),
       noteIds,
     });
+    observer?.onSourceLine?.(raw, lineId);
   }
 
   const byId = new Map(notes.map((note) => [note.id, note]));
