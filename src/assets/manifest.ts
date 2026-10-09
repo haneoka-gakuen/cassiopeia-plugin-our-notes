@@ -114,6 +114,8 @@ export interface Effect001ParticleSystemAssetRef {
    * height. Chart applies this only to native billboard particle systems.
    */
   rendererMaxParticleSize: number;
+  /** Unity render mode: View Billboard=0, HorizontalBillboard=2, VerticalBillboard=3. */
+  rendererRenderMode?: 0 | 2 | 3;
   /** Authored renderer material _TintColor; absent uses the established texture default. */
   materialTint?: readonly [number, number, number, number];
   /** The source system uses the effect.bundle wall mesh instead of a billboard. */
@@ -2198,6 +2200,7 @@ function simpleParticle(
       | "rendererPivot"
       | "animationPath"
       | "rendererMaxParticleSize"
+      | "rendererRenderMode"
     >
   > = {},
 ): Effect001ParticleSystemAssetRef {
@@ -2267,6 +2270,8 @@ export const EFFECT001SIMPLE_PREFABS: Readonly<Record<string, Effect001PrefabAss
         {
           animationPath: "ef_splash/ef_particle_point_center",
           shapeWidthOffset: 0.08,
+          rendererRenderMode: 3,
+          rendererMaxParticleSize: 0.5,
         },
       ),
       simpleParticle(
@@ -2278,6 +2283,8 @@ export const EFFECT001SIMPLE_PREFABS: Readonly<Record<string, Effect001PrefabAss
         {
           animationPath: "ef_splash/ef_particle_point",
           shapeWidthOffset: 0.08,
+          rendererRenderMode: 3,
+          rendererMaxParticleSize: 0.5,
         },
       ),
       simpleParticle("note_normal_simple.prefab", "ParticleSystem_3.asset", "ef_wall_center", "wall", [0, 0, 0.05], {
@@ -2479,7 +2486,7 @@ export const EFFECT001SIMPLE_PREFABS: Readonly<Record<string, Effect001PrefabAss
         "ef_particle_point_",
         "circleIcon",
         [0, -0.800000011920929, 0.41999998688697815],
-        { animationPath: "ef_slide_loop/ef_particle_point_" },
+        { animationPath: "ef_slide_loop/ef_particle_point_", rendererRenderMode: 2, rendererMaxParticleSize: 1 },
       ),
       simpleParticle(
         "note_slide_simple_loop.prefab",
@@ -2487,7 +2494,12 @@ export const EFFECT001SIMPLE_PREFABS: Readonly<Record<string, Effect001PrefabAss
         "ef_particle_point ",
         "circleIcon",
         [0, -0.5299999713897705, 0.6499999761581421],
-        { animationPath: "ef_slide_loop/ef_particle_point ", shapeWidthOffset: 0.07999999821186066 },
+        {
+          animationPath: "ef_slide_loop/ef_particle_point ",
+          shapeWidthOffset: 0.07999999821186066,
+          rendererRenderMode: 0,
+          rendererMaxParticleSize: 0.5,
+        },
       ),
       simpleParticle(
         "note_slide_simple_loop.prefab",
