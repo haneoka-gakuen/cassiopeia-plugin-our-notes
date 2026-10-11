@@ -42,5 +42,16 @@
     "node": ">=24"
   },
   "packageManager": "pnpm@11.14.0",
-  "description": "Our Notes score normalization, source asset contracts and presentation policy"
+  "description": "Our Notes score normalization, source asset contracts and presentation policy",
+  "keywords": [
+    "cassiopeia",
+    "rhythm-game",
+    "our-notes",
+    "bang-dream",
+    "chart"
+  ],
+  "homepage": "https://github.com/haneoka-gakuen/cassiopeia-plugin-our-notes#readme",
+  "bugs": {
+    "url": "https://github.com/haneoka-gakuen/cassiopeia-plugin-our-notes/issues"
+  }
 }
