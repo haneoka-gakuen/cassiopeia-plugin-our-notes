@@ -34,6 +34,7 @@ final class OurNotesIntroAudio {
         volume > 100) {
       throw const FormatException('intro_audio_category');
     }
+    if (!options.containsKey('liveSe')) return;
     final rows = (options['liveSe'] as List).cast<Map>().where(
       (row) => row['liveSeType'] == 9,
     );
