@@ -1,0 +1,21 @@
+name: cassiopeia_plugin_our_notes
+version: 0.1.0
+publish_to: none
+environment:
+  sdk: ^3.13.5
+dependencies:
+  cassiopeia_runtime:
+    git:
+      url: https://github.com/haneoka-gakuen/cassiopeia.git
+      ref: 9acefef878ee759232c9eb8ec2e2dd338d45af83
+      path: dart
+  haneoka_render_profile:
+    git:
+      url: https://github.com/haneoka-gakuen/haneoka-render-profile.git
+      ref: 63bf1dfb76e0cd609cc076560b0c6c47d0305a4a
+  render_contracts:
+    git:
+      url: https://github.com/haneoka-gakuen/render-kernel-flutter.git
+      ref: d810428b8719d083ab97dda77dc3ce7de0ace444
+      path: packages/render_contracts
+  vector_math: ^2.2.0

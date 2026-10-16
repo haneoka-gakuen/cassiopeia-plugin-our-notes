@@ -4,3 +4,5 @@ dist/
 .build-parallel/
 .build-matrix/
 artifacts/
+dart/.dart_tool/
+dart/pubspec_overrides.yaml
