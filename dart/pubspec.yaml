@@ -7,7 +7,7 @@ dependencies:
   cassiopeia_runtime:
     git:
       url: https://github.com/haneoka-gakuen/cassiopeia.git
-      ref: 9acefef878ee759232c9eb8ec2e2dd338d45af83
+      ref: f51457fdee6cc0eeee9ebab486b0558c32c3b8bf
       path: dart
   haneoka_render_profile:
     git:
