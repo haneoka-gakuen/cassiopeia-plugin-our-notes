@@ -20,10 +20,14 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./authored": {
+      "types": "./dist/authored.d.ts",
+      "import": "./dist/authored.js"
+    }
   },
   "scripts": {
-    "build": "vite build && node scripts/copy-note-skin-assets.mjs && tsc -p tsconfig.build.json",
+    "build": "node scripts/build-chart-ui-profile.mjs && vite build && node scripts/copy-note-skin-assets.mjs && tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check": "pnpm typecheck && pnpm build",
     "format": "prettier --write . --ignore-unknown",

@@ -7,6 +7,8 @@
 
 import { unityStringHash } from "./unityHash.js";
 import { OUR_NOTES_BUNDLED_NOTE_ATLASES } from "./noteAtlas.js";
+import { OUR_NOTES_CHART_UI_PROFILE, type OurNotesChartUiProfile } from "./chartUiProfile.js";
+import effectParticleActivity from "./effect-particle-activity.json";
 
 export interface SpriteMetadataRef {
   /** Unity Sprite.m_Name. */
@@ -29,6 +31,7 @@ export interface LaneAssetManifest {
   materialBaseTextureUrl: string;
   tapAreaTextureUrl: string;
   outsideLineTextureUrl: string;
+  lineTextureUrl: string;
   referenceImageUrl: string;
 }
 
@@ -46,7 +49,7 @@ export interface ParticleAssetManifest {
   /** Omitted when the native material uses its default white texture. */
   slideLineTextureUrl?: string;
   /** Layer-25 LiveLaneEffectView assets, separate from HDR note effects. */
-  laneEffects: Readonly<Record<LaneEffectAssetKey, LaneEffectParticleAssetRef>>;
+  laneEffects: Readonly<Record<Exclude<LaneEffectAssetKey, "gekisou">, LaneEffectParticleAssetRef> & { gekisou?: LaneEffectParticleAssetRef }>;
   effect001Prefabs: Readonly<Record<string, Effect001PrefabAssetRef>>;
   /** LiveNoteEffectAssetSettings prefab slots. */
   effect001PrefabIds: typeof EFFECT001_PREFAB_IDS;
@@ -78,7 +81,7 @@ export interface OurNotesSlideLineStyle {
   readonly glow: OurNotesSlideLineGlow;
 }
 
-export type LaneEffectAssetKey = "inVain" | "normal" | "slide" | "flick" | "flickLeft" | "flickRight";
+export type LaneEffectAssetKey = "inVain" | "normal" | "slide" | "flick" | "flickLeft" | "flickRight" | "gekisou";
 
 /** Lane effects are a separate native pipeline from note judgement effects. */
 export interface LaneEffectParticleAssetRef {
@@ -97,7 +100,12 @@ export interface Effect001ParticleSystemAssetRef {
   name: string;
   /** Animator-relative GameObject path used to respect authored active windows. */
   animationPath?: string;
+  /** Animator-relative source GameObject defaults, including every ancestor. */
+  baseActiveHierarchy?: ReadonlyArray<{ path: string; active: boolean }>;
+  rendererEnabled?: boolean;
   metadataUrl: string;
+  /** Original particle owner identity for the source-bound Simple Circle Transform data. */
+  originalIdentity?: { serializedFile: string; pathId: string };
   texture: Effect001TextureKey;
   localPosition: readonly [number, number, number];
   localScale?: readonly [number, number, number];
@@ -176,12 +184,36 @@ export interface OurNotesPalette {
   miss: string;
 }
 
+export interface HudSpriteGeometry {
+  rectWidth: number;
+  rectHeight: number;
+  textureWidth: number;
+  textureHeight: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+export interface HudComboTierAssets {
+  labelUrl: string;
+  baseDigitUrls: ReadonlyArray<string>;
+  fillDigitUrls: ReadonlyArray<string>;
+  glowUrl?: string;
+  geometry?: {
+    label: HudSpriteGeometry;
+    baseDigits: ReadonlyArray<HudSpriteGeometry>;
+    fillDigits: ReadonlyArray<HudSpriteGeometry>;
+    glow?: HudSpriteGeometry;
+  };
+}
+
 export interface HudAssetManifest {
   judgementImages: Readonly<Record<"just" | "perfect" | "great" | "good" | "bad" | "miss" | "fast" | "late", string>>;
   comboLabelUrl: string;
   comboDigitUrls: ReadonlyArray<string>;
   perfectComboLabelUrl: string;
   perfectComboDigitUrls: ReadonlyArray<string>;
+  /** LiveComboSpriteAsset's native three tiers; legacy combined sprites remain supported. */
+  comboTiers?: Readonly<Record<"normal" | "fullCombo" | "allPerfect", HudComboTierAssets>>;
   pauseIconUrl: string;
   pauseFrameUrl: string;
   pauseShadowUrl: string;
@@ -339,6 +371,9 @@ export interface OurNotesArrowGradientStyle {
 
 export interface OurNotesAssetManifest {
   id: string;
+  /** URI mapping for optional Source presentations, independent of transport and renderer. */
+  presentationAssets?: OurNotesAssetResolver;
+  uiProfile: OurNotesChartUiProfile;
   source: {
     game: "BanG Dream! Our Notes";
     noteSkin: OurNotesNoteSkin;
@@ -366,6 +401,8 @@ export interface OurNotesAssetManifest {
 
 /** Exact build-specific media URLs resolved from Unity source descriptors. */
 export interface OurNotesRuntimeMediaManifest {
+  /** The selected immutable source ships the seventh Gekisou lane prefab. */
+  gekisouLaneAvailable?: boolean;
   noteAtlasTextureUrl?: string;
   /** Selected from the note skins present in the active release. */
   noteSkin?: OurNotesNoteSkin;
@@ -609,7 +646,7 @@ export function createOurNotesAssetManifest(
     }
     return value;
   };
-  return visit(buildOurNotesSkinManifest(media)) as OurNotesAssetManifest;
+  return { ...(visit(buildOurNotesSkinManifest(media)) as OurNotesAssetManifest), presentationAssets: resolver };
 }
 
 /**
@@ -691,6 +728,7 @@ const EFFECT_COMMON_SOURCE = "Assets/AddressableResources/Effect/Live/NoteEffect
 const EFFECT_COMMON_TEXTURE_SOURCE = `${EFFECT_COMMON_SOURCE}/Texture`;
 const EFFECT_COMMON_LIGHT_TEXTURE_SOURCE = `${EFFECT_COMMON_SOURCE}/TextureLight`;
 const LANE_EFFECT_SOURCE = "Assets/AddressableResources/Effect/Live/LaneEffect/effect001";
+const LANE_EFFECT_TEXTURE_SOURCE = "Assets/AddressableResources/Effect/Live/LaneEffect/Common/lane_effect_white.png";
 const LIVE_IMAGE_SOURCE = "Assets/AddressableResources/Live/Images";
 const HUD_FONT_SOURCE = "Assets/AddressableResources/Font/VibeMOPro-Medium/VibeMOPro-Medium SDF.asset";
 
@@ -829,6 +867,7 @@ function effectParticle(
       | "animationPath"
     >
   > = {},
+  resolveMetadata: (root: string, file: string) => string = effect001Root,
 ): Effect001ParticleSystemAssetRef {
   const rendererPivot =
     options.rendererPivot ?? (options.renderer === "wallMesh" ? ([0, -0.21, -0.5] as const) : undefined);
@@ -836,15 +875,30 @@ function effectParticle(
   // long-star, center-line and wall systems. Keep the value on the manifest
   // even for walls; ParticleQuadBatch deliberately consumes billboards only.
   const rendererMaxParticleSize = options.rendererMaxParticleSize ?? (texture === "star" ? 0.5 : 1);
+  const metadataUrl = resolveMetadata(root, file);
   return {
     name,
-    metadataUrl: effect001Root(root, file),
+    metadataUrl,
+    ...particleActivityFor(metadataUrl),
     texture,
     localPosition,
     ...options,
     rendererMaxParticleSize,
     ...(rendererPivot ? { rendererPivot } : {}),
   };
+}
+
+function particleActivityFor(
+  metadataUrl: string,
+): Pick<Effect001ParticleSystemAssetRef, "baseActiveHierarchy" | "rendererEnabled"> {
+  const key = metadataUrl.slice(RELEASE_TEMPLATE_RUNTIME_ROOT.length + 1);
+  const entries: Readonly<Record<string, {
+    hierarchy: ReadonlyArray<{ path: string; active: boolean }>;
+    rendererEnabled: boolean;
+  }>> = effectParticleActivity.particles;
+  const source = entries[key];
+  if (!source) throw new Error(`Missing original particle activity: ${key}`);
+  return { baseActiveHierarchy: source.hierarchy, rendererEnabled: source.rendererEnabled };
 }
 
 function effectSprite(
@@ -1510,8 +1564,7 @@ function lightParticle(
   > = {},
 ): Effect001ParticleSystemAssetRef {
   return {
-    ...effectParticle(root, file, name, texture, localPosition, options),
-    metadataUrl: effect001LightRoot(root, file),
+    ...effectParticle(root, file, name, texture, localPosition, options, effect001LightRoot),
     materialTint:
       options.materialTint ??
       (texture === "wall"
@@ -2184,6 +2237,28 @@ const EFFECT_SIMPLE_CLIP = (name: string): string =>
 const simpleObject = (prefab: string, type: string, ordinal = 0): string =>
   unityObject(`${EFFECT001SIMPLE_SOURCE}/${prefab}`, type, ordinal);
 
+// Exact enabled Circle Transform records from the four source-owned Simple prefabs.
+// Raw quaternion components remain data; this renderer supports their X-only axis.
+const SIMPLE_CIRCLE_TRANSFORMS: Readonly<Record<string, {
+  position: readonly [number, number, number]; scale: readonly [number, number, number];
+  rotation: readonly [number, number, number, number];
+  originalIdentity: { serializedFile: string; pathId: string };
+}>> = {
+  "note_slide_simple.prefab/ParticleSystem_2.asset": { position: [0.0, -0.5299999713897705, 0.550000011920929], scale: [1.0, 1.0, 1.0], rotation: [-0.7071068286895752, 0.0, 0.0, 0.7071068286895752], originalIdentity: { serializedFile: "CAB-4772c090a1eb6addb06df85d610e706e", pathId: "5299125697764409956" } },
+  "note_slide_simple.prefab/ParticleSystem.asset": { position: [0.0, -0.5299999713897705, 0.550000011920929], scale: [1.0, 1.0, 1.0], rotation: [0.0, 0.0, 0.0, 1.0], originalIdentity: { serializedFile: "CAB-4772c090a1eb6addb06df85d610e706e", pathId: "-7558382824421113244" } },
+  "note_groove_simple.prefab/ParticleSystem_2.asset": { position: [0.0, -0.531000018119812, 0.0], scale: [1.0, 1.0, 1.0], rotation: [0.0, 0.0, 0.0, 1.0], originalIdentity: { serializedFile: "CAB-624441186a770e3e79dab52c0e3d546e", pathId: "3689626888936687615" } },
+  "note_groove_simple.prefab/ParticleSystem_3.asset": { position: [0.0, -0.5299999713897705, 0.0], scale: [1.0, 1.0, 1.0], rotation: [0.0, 0.0, 0.0, 1.0], originalIdentity: { serializedFile: "CAB-624441186a770e3e79dab52c0e3d546e", pathId: "8953216847793555455" } },
+  "note_slide_simple_loop.prefab/ParticleSystem_1.asset": { position: [0.0, -0.800000011920929, 0.41999998688697815], scale: [1.0, 1.0, 1.0], rotation: [0.9508405327796936, 0.0, 0.0, 0.3096809983253479], originalIdentity: { serializedFile: "CAB-b955f47d8d200fa0f95b8cb064155cb0", pathId: "-2789622563880701922" } },
+  "note_slide_simple_loop.prefab/ParticleSystem_3.asset": { position: [0.0, -0.5299999713897705, 0.6499999761581421], scale: [0.75, 1.0, 1.0], rotation: [0.20236001908779144, 0.0, 0.0, 0.9793112874031067], originalIdentity: { serializedFile: "CAB-b955f47d8d200fa0f95b8cb064155cb0", pathId: "7951268161139044382" } },
+  "note_normal_simple.prefab/ParticleSystem_2.asset": { position: [0.0, -0.5299999713897705, 0.550000011920929], scale: [1.0, 1.0, 1.0], rotation: [0.0, 0.0, 0.0, 1.0], originalIdentity: { serializedFile: "CAB-0f18d35412a1ae3b3b0ffd03ca141c9d", pathId: "-552148383457270490" } },
+  "note_normal_simple.prefab/ParticleSystem.asset": { position: [0.0, -0.5299999713897705, 0.550000011920929], scale: [1.0, 1.0, 1.0], rotation: [-0.7071068286895752, 0.0, 0.0, 0.7071068286895752], originalIdentity: { serializedFile: "CAB-0f18d35412a1ae3b3b0ffd03ca141c9d", pathId: "-8899986100823186138" } },
+};
+function simpleCircleRotationX(quaternion: readonly [number, number, number, number]): number {
+  if (quaternion[1] !== 0 || quaternion[2] !== 0 || !quaternion.every(Number.isFinite) ||
+      Math.hypot(quaternion[0], quaternion[3]) === 0) throw new Error("Unsupported original Simple Circle Transform rotation");
+  return 2 * Math.atan2(quaternion[0], quaternion[3]);
+}
+
 function simpleParticle(
   prefab: string,
   file: string,
@@ -2208,12 +2283,18 @@ function simpleParticle(
     options.rendererPivot ?? (options.renderer === "wallMesh" ? ([0, -0.21, -0.5] as const) : undefined);
   const rendererMaxParticleSize = options.rendererMaxParticleSize ?? (texture === "star" ? 0.5 : 1);
   const object = objectOrdinal(file);
+  const circleTransform = SIMPLE_CIRCLE_TRANSFORMS[`${prefab}/${file}`];
+  const metadataUrl = simpleObject(prefab, object.type, object.ordinal);
   return {
     name,
-    metadataUrl: simpleObject(prefab, object.type, object.ordinal),
+    metadataUrl,
+    ...particleActivityFor(metadataUrl),
     texture,
     localPosition,
     ...options,
+    ...(circleTransform ? { originalIdentity: circleTransform.originalIdentity,
+      localPosition: circleTransform.position, localScale: circleTransform.scale,
+      localRotationX: simpleCircleRotationX(circleTransform.rotation) } : {}),
     rendererMaxParticleSize,
     ...(rendererPivot ? { rendererPivot } : {}),
   };
@@ -2636,6 +2717,7 @@ const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): 
   const textureSource = effectProfile.textureSource;
   return {
     id: `our-notes-${noteSkin}-${profileId}-se${noteSeGroup}`,
+    uiProfile: OUR_NOTES_CHART_UI_PROFILE,
     source: {
       game: "BanG Dream! Our Notes",
       noteSkin,
@@ -2669,6 +2751,9 @@ const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): 
       materialBaseTextureUrl: sourceAsset(`${LANE_SOURCE}/lane_base.png`),
       tapAreaTextureUrl: sourceAsset(`${LANE_SOURCE}/lane_tap_area.png`),
       outsideLineTextureUrl: sourceAsset(`${LANE_SOURCE}/out_side_line.png`),
+      lineTextureUrl: sourceAsset(
+        "Assets/AddressableResources/Live/Images/NonAtlas/LiveStartAnim/white_line_antialiasing_side.png",
+      ),
       referenceImageUrl: sourceAsset(`${LANE_SOURCE}/reference_image.png`),
     },
     particles: {
@@ -2682,8 +2767,15 @@ const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): 
       centerPillar02TextureUrl: sourceAsset(`${textureSource}/ef_pillar_center02.png`),
       circleIconTextureUrl: sourceAsset(`${effectProfile.circleIconTextureSource}/ef_circle_icon.png`),
       laneEffects: {
+        ...(runtimeMedia.gekisouLaneAvailable ? { gekisou: {
+          textureUrl: sourceAsset(LANE_EFFECT_TEXTURE_SOURCE),
+          particleSystemMetadataUrl: unityObject(
+            `${LANE_EFFECT_SOURCE}/lane_tap_excellenet_view.prefab`, "ParticleSystem", 2,
+          ),
+          lifetime: 0.44999998807907104,
+        } } : {}),
         inVain: {
-          textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
+          textureUrl: sourceAsset(LANE_EFFECT_TEXTURE_SOURCE),
           particleSystemMetadataUrl: unityObject(
             `${LANE_EFFECT_SOURCE}/lane_tap_blank_miss_view.prefab`,
             // The emitting system of this prefab is the unsuffixed file; the
@@ -2695,7 +2787,7 @@ const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): 
           lifetime: 0.44999998807907104 / 2,
         },
         normal: {
-          textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
+          textureUrl: sourceAsset(LANE_EFFECT_TEXTURE_SOURCE),
           particleSystemMetadataUrl: unityObject(
             `${LANE_EFFECT_SOURCE}/lane_tap_normal_view.prefab`,
             "ParticleSystem",
@@ -2704,12 +2796,12 @@ const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): 
           lifetime: 0.44999998807907104 / 2,
         },
         slide: {
-          textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
+          textureUrl: sourceAsset(LANE_EFFECT_TEXTURE_SOURCE),
           particleSystemMetadataUrl: unityObject(`${LANE_EFFECT_SOURCE}/lane_tap_slide_view.prefab`, "ParticleSystem"),
           lifetime: 0.44999998807907104 / 2,
         },
         flick: {
-          textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
+          textureUrl: sourceAsset(LANE_EFFECT_TEXTURE_SOURCE),
           particleSystemMetadataUrl: unityObject(
             `${LANE_EFFECT_SOURCE}/lane_tap_flick_view.prefab`,
             "ParticleSystem",
@@ -2718,7 +2810,7 @@ const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): 
           lifetime: 0.44999998807907104 / 2,
         },
         flickLeft: {
-          textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
+          textureUrl: sourceAsset(LANE_EFFECT_TEXTURE_SOURCE),
           particleSystemMetadataUrl: unityObject(
             `${LANE_EFFECT_SOURCE}/lane_tap_flick_left_view.prefab`,
             "ParticleSystem",
@@ -2726,7 +2818,7 @@ const buildOurNotesSkinManifest = (runtimeMedia: OurNotesRuntimeMediaManifest): 
           lifetime: 0.44999998807907104 / 2,
         },
         flickRight: {
-          textureUrl: sourceAsset(`${LIVE_IMAGE_SOURCE}/lane_effect_white.png`),
+          textureUrl: sourceAsset(LANE_EFFECT_TEXTURE_SOURCE),
           particleSystemMetadataUrl: unityObject(
             `${LANE_EFFECT_SOURCE}/lane_tap_flick_right_view.prefab`,
             "ParticleSystem",
@@ -2800,6 +2892,9 @@ export function ourNotesAssetManifestForRelease(
     ...runtimeMedia.hud.comboDigitUrls,
     runtimeMedia.hud.perfectComboLabelUrl,
     ...runtimeMedia.hud.perfectComboDigitUrls,
+    ...Object.values(runtimeMedia.hud.comboTiers ?? {}).flatMap((tier) => [
+      tier.labelUrl, ...tier.baseDigitUrls, ...tier.fillDigitUrls, ...(tier.glowUrl ? [tier.glowUrl] : []),
+    ]),
     runtimeMedia.hud.pauseIconUrl,
     runtimeMedia.hud.pauseFrameUrl,
     runtimeMedia.hud.pauseShadowUrl,

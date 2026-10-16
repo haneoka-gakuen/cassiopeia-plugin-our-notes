@@ -160,6 +160,24 @@ listener, or serve a release endpoint.
 
 ## Lifetime and license
 
+The Dart `ChartLaneFeedback` profile owns the same 24 source lane slots and
+one-second owner lifetime as the browser adapter. Its particle geometry and
+colour samples use the authored six lane prefabs; renderers supply projection,
+texture loading and the additive draw. Lane feedback is independent of the
+HDR note-effect quality setting.
+
+Export the numeric profile and original texture from a selected extracted
+release into an existing chart render profile:
+
+```sh
+python3 scripts/export-lane-feedback.py --release-root=/path/to/release \
+  --output-dir=/path/to/render-profile/assets/profile/effects
+```
+
+The exporter checks archive hashes and records the source identities. The
+output contains data and the original texture; shader programs and asset
+fetching remain the renderer and host's responsibilities.
+
 The rules service is stateless. Dispose the surrounding `CassiopeiaRuntime`
 when the host drops the chart; dispose the renderer, clock, sound player, and
 input adapter through their own lifetimes. Frame builders and sessions contain

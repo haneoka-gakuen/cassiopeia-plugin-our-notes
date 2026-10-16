@@ -323,8 +323,63 @@ function interpolateAuthoredLine(notes: ChartNote[], timeMs: number): Shape {
   return { pos, size: right - pos };
 }
 
+/** MusicScoreNoteCreator's bar-based authored and automatic Combo clock. */
+function createNativePositionTiming(root: SsRoot, converter: TickConverter) {
+  const signatures = [...root.sig]
+    .sort((left, right) => left.t - right.t)
+    .map((point) => ({
+      ...converter.tickToBarPosition(point.t),
+      timeMs: converter.tickToTimeMs(point.t),
+      beats: Math.fround(Math.fround(point.sig[0] * 4) / point.sig[1]),
+    }));
+  const bpmPoints = [...root.bpm].sort((left, right) => left.t - right.t);
+  // Match the authored TickConverter's implicit initial BPM event.
+  if (!bpmPoints.length || bpmPoints[0]!.t > 0) bpmPoints.unshift({ t: 0, bpm: 120 });
+  const bpms = bpmPoints.map((point) => ({
+    ...converter.tickToBarPosition(point.t),
+    timeMs: converter.tickToTimeMs(point.t),
+    bpm: Math.fround(point.bpm),
+  }));
+  return {
+    beatsAtBar(bar: number): number {
+      let beats = 4;
+      for (const point of signatures) {
+        if (point.bar > bar) break;
+        beats = point.beats;
+      }
+      return beats;
+    },
+    timeAtPosition(position: BarPosition): number {
+      let beats = 4;
+      let bpm = 160;
+      let anchor = { bar: 0, progress: 0, timeMs: 0 };
+      const isBefore = (point: BarPosition) =>
+        point.bar < position.bar || (point.bar === position.bar && point.progress < position.progress);
+      for (const point of signatures) {
+        if (!isBefore(point)) break;
+        beats = point.beats;
+        if (point.timeMs > anchor.timeMs) anchor = point;
+      }
+      for (const point of bpms) {
+        if (!isBefore(point)) break;
+        bpm = point.bpm;
+        if (point.timeMs > anchor.timeMs) anchor = point;
+      }
+      // PositionToTimeMs uses float multiply/divide/add, then floors the
+      // millisecond offset. CreateNote uses this same clock for authored notes.
+      const secondsPerBar = Math.fround(Math.fround(beats * 60) / bpm);
+      const seconds = Math.fround(
+        Math.fround(secondsPerBar * Math.fround(position.bar - anchor.bar)) +
+          Math.fround(secondsPerBar * Math.fround(position.progress - anchor.progress)),
+      );
+      return anchor.timeMs + Math.floor(Math.fround(seconds * 1000));
+    },
+  };
+}
+
 export function buildChart(root: SsRoot, observer?: ChartBuildSourceObserver): ChartDocument {
   const converter = new TickConverter(root.bpm, root.sig);
+  const comboTiming = createNativePositionTiming(root, converter);
   const { types: coincidence, consumedSingles } = buildGuideCoincidence(root.notes);
   const notes: ChartNote[] = [];
   const lines: ChartLine[] = [];
@@ -350,7 +405,7 @@ export function buildChart(root: SsRoot, observer?: ChartBuildSourceObserver): C
     const note: ChartNote = {
       id,
       tick,
-      timeMs: override?.timeMs ?? converter.tickToTimeMs(tick),
+      timeMs: override?.timeMs ?? comboTiming.timeAtPosition(converter.tickToBarPosition(tick)),
       beat: override?.beat ?? tick / PPQ,
       pos: shape.pos,
       size: shape.size,
@@ -479,51 +534,51 @@ export function buildChart(root: SsRoot, observer?: ChartBuildSourceObserver): C
         const b = converter.tickToBarPosition(right.tick);
         return a.bar - b.bar || a.progress - b.progress || left.id - right.id;
       });
-    // TrySetSlideNoteId builds boundaries from the begin note's ViewNoteList
-    // after the allowed-operation predicate (b__43_4) and then removes PosAuto
-    // nodes via `!SlideAlong` (b__43_3).
     const authoredJudgePositions = [...runtimeView, end]
       .filter((note) => note.judged)
       .map((note) => converter.tickToBarPosition(note.tick));
-    // Native note times are integer milliseconds. At 198 BPM, converting a
-    // generated millisecond back to a bar can differ from the authored tick
-    // despite both notes having the same runtime timestamp. Do not award a
-    // second combo for that one judgement (0.3.2 chart 0038_03: 774, not 780).
-    const authoredJudgeTimes = new Set([...runtimeView, end].filter((note) => note.judged).map((note) => note.timeMs));
-    const visibleMidpoints = runtimeView.filter((note) => !note.slideAlong);
-    const boundaries = [begin, ...visibleMidpoints, end];
+    // Every judged node restarts the native eighth-note interval, including
+    // nodes whose lane position is interpolated automatically.
+    const midpoints = runtimeView;
+    const boundaries = [begin, ...midpoints, end];
     const comboTimes: { timeMs: number; bar: BarPosition }[] = [];
     for (let index = 0; index < boundaries.length - 1; index++) {
       const head = boundaries[index]!;
       const tail = boundaries[index + 1]!;
-      let current = head.timeMs;
+      let { bar, progress } = converter.tickToBarPosition(head.tick);
+      let step = 1 / (comboTiming.beatsAtBar(bar) * 2);
       while (true) {
-        const bpm = converter.bpmAtTimeMs(Math.trunc(current));
-        const intervalMs = 30_000 / bpm;
-        if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
-          throw new RangeError("Chart contains an invalid BPM interval.");
+        if (!Number.isFinite(step) || step <= 0) {
+          throw new RangeError("Chart contains an invalid Combo bar interval.");
         }
-        const next = current + intervalMs;
-        if (!Number.isFinite(next) || next <= current) {
+        const next = progress + step;
+        if (!Number.isFinite(next) || next <= progress) {
           throw new RangeError("Chart combo timing does not advance.");
         }
-        current = next;
-        const timeMs = roundToEven(current);
+        progress = next;
+        if (progress >= 1) {
+          bar += 1;
+          progress -= 1;
+          step = 1 / (comboTiming.beatsAtBar(bar) * 2);
+        }
+        const position = { bar, progress: Math.fround(progress) };
+        const timeMs = comboTiming.timeAtPosition(position);
         if (timeMs >= tail.timeMs) break;
         generatedComboCount += 1;
         if (generatedComboCount > MAX_GENERATED_COMBO_NOTES) {
           throw new RangeError("Chart produces too many generated combo notes.");
         }
-        comboTimes.push({ timeMs, bar: converter.timeMsToBarPosition(timeMs) });
+        comboTimes.push({ timeMs, bar: position });
       }
     }
     for (let index = 0; index < comboTimes.length; index++) {
       const combo = comboTimes[index]!;
+      // TrySetSlideNoteId skips an exact authored position before constructing
+      // either Combo or ComboSkip; equal milliseconds alone are not its key.
+      if (authoredJudgePositions.some((position) => sameBarPosition(position, combo.bar))) continue;
       const sixteenthMs = 15_000 / converter.bpmAtTimeMs(combo.timeMs);
       const tooClose =
-        authoredJudgeTimes.has(combo.timeMs) ||
-        authoredJudgePositions.some((position) => sameBarPosition(position, combo.bar)) ||
-        visibleMidpoints.some((note) => note.timeMs - sixteenthMs <= combo.timeMs && combo.timeMs < note.timeMs) ||
+        midpoints.some((note) => note.timeMs - sixteenthMs <= combo.timeMs && combo.timeMs < note.timeMs) ||
         (index === 0 && combo.timeMs - begin.timeMs < sixteenthMs) ||
         (index === comboTimes.length - 1 && end.timeMs - combo.timeMs < sixteenthMs);
       const shape = interpolateAuthoredLine(authored, combo.timeMs);

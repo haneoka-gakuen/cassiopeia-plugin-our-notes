@@ -1,4 +1,11 @@
-import { isPairNoteOperateType, NoteDirection, NoteOperateType, NoteSimulateJudgement } from "@haneoka/cassiopeia";
+import { OurNotesGekisouPlan, OUR_NOTES_GEKISOU_LANE_LIFETIME } from "../presentation/Gekisou.js";
+import { OurNotesGekisouPresentation } from "../presentation/GekisouPresentation.js";
+import type {
+  OurNotesGekisouPresentationProjector,
+  OurNotesGekisouPresentationTiming,
+  OurNotesGekisouProjectionContext,
+} from "../presentation/GekisouPresentation.js";
+import { FeverState, isPairNoteOperateType, NoteDirection, NoteOperateType, NoteSimulateJudgement } from "@haneoka/cassiopeia";
 import { applyLineEase, interpolateNoteLine, LANE_COUNT, mirrorLane } from "@haneoka/cassiopeia";
 import { VisualTimeMap } from "@haneoka/cassiopeia";
 import type {
@@ -7,6 +14,7 @@ import type {
   JudgementEvent,
   LaneInputEffectEvent,
   SessionSnapshot,
+  WatchVisualReplayContract,
 } from "@haneoka/cassiopeia";
 import { isRenderLaneEffectKind, NativeChartVisualProfilesError } from "../render/types.js";
 import type { OurNotesNoteEffectSkin } from "../assets/manifest.js";
@@ -47,6 +55,8 @@ export interface RenderSettings {
   showSimultaneousLine: boolean;
   /** Emphasize critical/ease-note marks; the original option defaults off. */
   showEaseNote: boolean;
+  /** Native ContinuationEffectDisplay (OptionItemType 208). */
+  continuationEffectDisplay?: boolean;
   backgroundBrightness: number;
   judgeResultPosition: "center" | "lane" | "none";
   noteOverlapLaneBuffer: number;
@@ -66,6 +76,7 @@ export const DEFAULT_RENDER_SETTINGS: RenderSettings = {
   noteSpeedCurve: 1.30999994,
   mirror: false,
   effects: true,
+  continuationEffectDisplay: true,
   noteSize: 1,
   longAlpha: 0.6,
   guideAlpha: 0.6,
@@ -95,6 +106,14 @@ export interface RenderFrameBuilderOptions {
   particleSeed?: number;
   noteEffectSkin?: OurNotesNoteEffectSkin;
   visualProfiles?: NativeChartVisualProfiles;
+  gekisou?: OurNotesGekisouPlan;
+  gekisouPresentation?: OurNotesGekisouPresentationConfiguration;
+}
+
+export interface OurNotesGekisouPresentationConfiguration {
+  readonly projector: OurNotesGekisouPresentationProjector;
+  readonly context: OurNotesGekisouProjectionContext;
+  readonly timing?: OurNotesGekisouPresentationTiming;
 }
 
 interface ResolvedVisualProfiles {
@@ -641,6 +660,9 @@ function nativeRoundToEven(value: number): number {
 // All six selected lane ParticleSystems serialize startLifetime=.45 and
 // simulationSpeed=2, so their visible real-time lifetime is .225 seconds.
 const NATIVE_LANE_EFFECT_LIFETIME = 0.44999998807907104 / 2;
+// LiveGameLaneEffectBase is released by its invisible parent PS callback:
+// duration=1, simulationSpeed=1. The visible child ends after .45/2 seconds.
+const NATIVE_LANE_EFFECT_OCCUPANCY_MS = 1000;
 
 /**
  * Durations of the tap/slide/flick judgement clips selected by
@@ -688,6 +710,26 @@ interface QueuedLaneInputEffect {
   lifetime: number;
 }
 
+function laneFeedbackPriority(effect: QueuedJudgementEffect | QueuedLaneInputEffect, empty: boolean): number {
+  if (empty) return 2;
+  const judgement = effect as QueuedJudgementEffect;
+  switch (judgement.kind) {
+    case "lane-effect-gekisou": return 50;
+    case "lane-effect-normal": return 10;
+    case "lane-effect-slide": return 20;
+    case "lane-effect-flick":
+      return judgement.event.note.direction === NoteDirection.Left ? 31
+        : judgement.event.note.direction === NoteDirection.Right ? 32 : 30;
+    default: return 1;
+  }
+}
+
+interface LaneFeedbackOwner {
+  effect: QueuedJudgementEffect | QueuedLaneInputEffect;
+  empty: boolean;
+  timeMs: number;
+}
+
 interface QueuedHudJudgement {
   event: JudgementEvent;
   spawnedAtMs: number;
@@ -703,14 +745,16 @@ export class RenderFrameBuilder {
   private readonly preparedLines: ReadonlyArray<PreparedLine>;
   private readonly effects: QueuedJudgementEffect[] = [];
   private readonly hudJudgements: QueuedHudJudgement[] = [];
-  private readonly latestLaneEffects = new Map<string, QueuedJudgementEffect>();
+  private readonly laneFeedbackOwners = new Map<number, LaneFeedbackOwner>();
   /** Raw input feedback is never inserted into the judgement/score pipeline. */
   private readonly laneInputEffects: QueuedLaneInputEffect[] = [];
-  private readonly latestLaneInputEffects = new Map<number, QueuedLaneInputEffect>();
   private readonly sampleStart: PreparedHoldPoint = { timeMs: 0, pos: 0, size: 0 };
   private readonly sampleEnd: PreparedHoldPoint = { timeMs: 0, pos: 0, size: 0 };
   private readonly particleSeedEntropy: number;
   private readonly noteEffectSkin: OurNotesNoteEffectSkin;
+  private readonly gekisou: OurNotesGekisouPlan | undefined;
+  private gekisouPresentation: OurNotesGekisouPresentation | undefined;
+  private gekisouPresentationConfiguration: OurNotesGekisouPresentationConfiguration | undefined;
   private visualProfiles: ResolvedVisualProfiles | undefined;
   private readonly notePartitions: ProfileNotePartition[] = [];
   private readonly pairPartitions: ProfilePairPartition[] = [];
@@ -732,12 +776,18 @@ export class RenderFrameBuilder {
   private lastVisibleSimultaneousLineCursor = 0;
   private reusable?: ReusableFrameBuffers;
   private lastTimeMs = 0;
+  private seekTargetTimeMs: number | undefined;
 
   constructor(
     private readonly chart: ChartDocument,
     options: RenderFrameBuilderOptions = {},
   ) {
     this.visualProfiles = resolveVisualProfiles(chart, options.visualProfiles);
+    this.gekisou = options.gekisou;
+    this.gekisouPresentation = this.gekisou
+      ? new OurNotesGekisouPresentation(this.gekisou.ranges)
+      : undefined;
+    this.configureGekisouPresentation(options.gekisouPresentation);
     this.noteEffectSkin = options.noteEffectSkin ?? "effect001";
     this.particleSeedEntropy =
       options.particleSeed === undefined ? automaticParticleSeedEntropy() : mixParticleSeed(options.particleSeed);
@@ -819,6 +869,13 @@ export class RenderFrameBuilder {
       };
     });
     this.configureVisualPartitions();
+  }
+
+  /** Geometry and viewport changes retain the source result index. */
+  configureGekisouPresentation(configuration: OurNotesGekisouPresentationConfiguration | undefined): void {
+    this.gekisouPresentationConfiguration = configuration;
+    if (this.gekisouPresentation && configuration?.timing)
+      this.gekisouPresentation.timing = configuration.timing;
   }
 
   /** Replace visual profiles on this same compiled chart; keep judgement/HUD/effect timelines intact. */
@@ -945,7 +1002,13 @@ export class RenderFrameBuilder {
     group.windowStart = firstTime;
   }
 
-  addJudgement(event: JudgementEvent, timeMs: number): void {
+  addJudgement(event: JudgementEvent, timeMs: number, currentGekisouRangeIndex?: number): void {
+    this.gekisouPresentation?.record({
+      noteId: event.note.id,
+      noteTimeMs: event.note.timeMs,
+      judgedAtMs: event.judgedAtMs,
+      judgement: event.judgement,
+    });
     // Compact outside the rAF build path. copyWithin retains the backing
     // storage and avoids the allocation/copy churn of per-frame splice.
     if (this.effectHead > 64 && this.effectHead * 2 >= this.effects.length) {
@@ -961,7 +1024,9 @@ export class RenderFrameBuilder {
     if (judgementName(event.judgement)) {
       this.hudJudgements.push({ event, spawnedAtMs: timeMs, id: this.nextHudJudgementId++ });
     }
-    const kind = nativeParticleEffectKind(event.note);
+    const gekisou = this.gekisou?.isGekisouLane(event, currentGekisouRangeIndex) ?? false;
+    const ordinaryKind = nativeParticleEffectKind(event.note);
+    const kind = ordinaryKind === "tap" && gekisou ? "excellent" : ordinaryKind;
     if (kind) {
       const lifetime = nativeParticleEffectLifetime(kind, event.judgement, this.noteEffectSkin);
       if (lifetime > 0) {
@@ -978,17 +1043,23 @@ export class RenderFrameBuilder {
         });
       }
     }
-    const laneKind = nativeLaneEffectKind(event.note);
+    const ordinaryLaneKind = nativeLaneEffectKind(event.note);
+    const laneKind = ordinaryLaneKind && gekisou
+      ? "lane-effect-gekisou" : ordinaryLaneKind;
     // LiveLaneEffectView.UpdateFrame gates lane effects on judgements 3..6
     // (Good..Just); a Bad neither lights the lane nor plays a lane fill.
-    if (laneKind && event.judgement >= NoteSimulateJudgement.Good && event.judgement <= NoteSimulateJudgement.Just)
-      this.effects.push({
+    if (laneKind && event.judgement >= NoteSimulateJudgement.Good && event.judgement <= NoteSimulateJudgement.Just) {
+      const effect: QueuedJudgementEffect = {
         event,
         spawnedAtMs: timeMs,
         id: `${event.note.id}:${timeMs}:lane`,
         kind: laneKind,
-        lifetime: NATIVE_LANE_EFFECT_LIFETIME,
-      });
+        lifetime: laneKind === "lane-effect-gekisou"
+          ? OUR_NOTES_GEKISOU_LANE_LIFETIME : NATIVE_LANE_EFFECT_LIFETIME,
+      };
+      this.effects.push(effect);
+      this.claimLaneFeedback(event.note.pos, event.note.size, effect, false, timeMs);
+    }
   }
 
   addLaneInput(event: LaneInputEffectEvent): void {
@@ -998,21 +1069,52 @@ export class RenderFrameBuilder {
       this.laneInputEffects.length -= this.laneInputEffectHead;
       this.laneInputEffectHead = 0;
     }
-    this.laneInputEffects.push({
+    const effect: QueuedLaneInputEffect = {
       event,
       id: `lane-input:${event.pointerId}:${this.nextLaneInputEffectId++}`,
       lifetime: NATIVE_LANE_EFFECT_LIFETIME,
-    });
+    };
+    this.laneInputEffects.push(effect);
+    this.claimLaneFeedback(event.lane, event.width, effect, true, event.timeMs);
   }
 
-  reset(): void {
+  private claimLaneFeedback(
+    left: number,
+    width: number,
+    effect: QueuedJudgementEffect | QueuedLaneInputEffect,
+    empty: boolean,
+    timeMs: number,
+  ): void {
+    const frameTime = empty ? (effect as QueuedLaneInputEffect).event.timeMs
+      : (effect as QueuedJudgementEffect).event.judgedAtMs;
+    const priority = laneFeedbackPriority(effect, empty);
+    const first = nativeRoundToEven(left);
+    const last = first + Math.max(1, nativeRoundToEven(width)) - 1;
+    for (let lane = Math.max(0, first); lane <= Math.min(LANE_COUNT - 1, last); lane++) {
+      const previous = this.laneFeedbackOwners.get(lane);
+      if (previous && timeMs < previous.timeMs) continue;
+      if (previous) {
+        const previousFrame = previous.empty ? (previous.effect as QueuedLaneInputEffect).event.timeMs
+          : (previous.effect as QueuedJudgementEffect).event.judgedAtMs;
+        if (previousFrame === frameTime && priority <= laneFeedbackPriority(previous.effect, previous.empty)) continue;
+      }
+      if (empty && previous && !previous.empty && timeMs < previous.timeMs + NATIVE_LANE_EFFECT_OCCUPANCY_MS) continue;
+      this.laneFeedbackOwners.set(lane, { effect, empty, timeMs });
+    }
+  }
+
+  reset(seekTargetTimeMs?: number): void {
+    if (seekTargetTimeMs !== undefined && !Number.isFinite(seekTargetTimeMs)) {
+      throw new TypeError("Seek visual barrier must be a finite chart time");
+    }
+    this.seekTargetTimeMs = seekTargetTimeMs;
+    this.gekisouPresentation?.reset();
     this.effects.length = 0;
     this.effectHead = 0;
     this.hudJudgements.length = 0;
     this.hudJudgementHead = 0;
-    this.latestLaneEffects.clear();
+    this.laneFeedbackOwners.clear();
     this.laneInputEffects.length = 0;
-    this.latestLaneInputEffects.clear();
     this.laneInputEffectHead = 0;
     this.nextLaneInputEffectId = 0;
     this.firstVisibleNoteCursor = 0;
@@ -1031,7 +1133,50 @@ export class RenderFrameBuilder {
       line.particleEffectSeed = undefined;
       line.particleEffectStartedAtMs = undefined;
     }
-    this.lastTimeMs = 0;
+    this.lastTimeMs = seekTargetTimeMs ?? 0;
+  }
+
+  /** Rebuild presentation results with the same native watch ticks used by ChartSession.reset. */
+  resetWatch(timeMs: number, replay?: WatchVisualReplayContract, history?: readonly JudgementEvent[]): void {
+    this.reset(replay ? timeMs : undefined);
+    const tracker = this.gekisouPresentation;
+    const plan = this.gekisou;
+    if (!tracker || !plan) return;
+    if (history) {
+      for (const event of history) if (event.judgedAtMs <= timeMs) tracker.record({
+        noteId: event.note.id, noteTimeMs: event.note.timeMs,
+        judgedAtMs: event.judgedAtMs, judgement: event.judgement,
+      });
+      return;
+    }
+    for (const note of this.chart.notes) {
+      if (!note.judged || note.timeMs >= timeMs) continue;
+      let judgedAtMs = Math.floor(note.timeMs) + 1;
+      if (replay) {
+        const eligibleAt = note.timeMs + replay.inputOffsetMs;
+        let low = 0, high = replay.tickTimesMs.length;
+        while (low < high) {
+          const middle = (low + high) >>> 1;
+          if (replay.tickTimesMs[middle]! < eligibleAt) low = middle + 1;
+          else high = middle;
+        }
+        judgedAtMs = replay.tickTimesMs[low] ?? judgedAtMs;
+      }
+      if (judgedAtMs > timeMs) continue;
+      let feverSection = null;
+      let feverState = FeverState.Wait;
+      for (const section of this.chart.timeline.fever) {
+        if (section.startTimeMs > judgedAtMs) break;
+        feverSection = section;
+        feverState = judgedAtMs < section.endTimeMs ? FeverState.Fever : FeverState.End;
+      }
+      tracker.record({
+        noteId: note.id,
+        noteTimeMs: note.timeMs,
+        judgedAtMs,
+        judgement: plan.autoJudgement(note, { observedTimeMs: judgedAtMs, feverState, feverSection }),
+      });
+    }
   }
 
   build(timeMs: number, snapshot: SessionSnapshot, partialSettings: Partial<RenderSettings> = {}): RenderFrame {
@@ -1053,6 +1198,7 @@ export class RenderFrameBuilder {
     reuse: boolean,
   ): RenderFrame {
     if (timeMs + 5 < this.lastTimeMs) this.reset();
+    if (this.seekTargetTimeMs !== undefined && timeMs > this.seekTargetTimeMs) this.seekTargetTimeMs = undefined;
     const visualTimeMs = this.visualTimeMap.toScaledTimeMs(timeMs);
     const settings = partialSettings;
     const noteSpeed = settings.noteSpeed ?? DEFAULT_RENDER_SETTINGS.noteSpeed;
@@ -1302,25 +1448,7 @@ export class RenderFrameBuilder {
     const particles: RenderParticleEffect[] = buffers?.particles ?? [];
     particles.length = 0;
     if (settings.effects ?? DEFAULT_RENDER_SETTINGS.effects) {
-      // There is exactly one native LiveGameLaneEffectBase per resolved
-      // (viewType, lane). Play stops/clears an already-playing instance before
-      // restarting it, so a newer judgement replaces rather than adds to the
-      // older quad. Build that ownership table before emitting this frame.
-      this.latestLaneEffects.clear();
-      for (let index = this.effectHead; index < this.effects.length; index++) {
-        const effect = this.effects[index]!;
-        const age = (timeMs - effect.spawnedAtMs) / 1000;
-        if (age < 0 || age > effect.lifetime) continue;
-        const note = effect.event.note;
-        const kind = directedLaneEffectKind(effect.kind, renderDirection(note, mirror));
-        if (!isRenderLaneEffectKind(kind)) continue;
-        const laneStart = nativeRoundToEven(mirror ? mirrorLane(note.pos, note.size) : note.pos);
-        const laneEnd = laneStart + Math.max(1, nativeRoundToEven(note.size)) - 1;
-        for (let lane = laneStart; lane <= laneEnd; lane += 1) {
-          this.latestLaneEffects.set(`${kind}:${lane}`, effect);
-        }
-      }
-
+      // Source UpdateFrame replaces the previous type in each of 24 lanes.
       for (let index = this.effectHead; index < this.effects.length; index++) {
         const effect = this.effects[index]!;
         const age = (timeMs - effect.spawnedAtMs) / 1000;
@@ -1336,7 +1464,7 @@ export class RenderFrameBuilder {
           const laneStart = nativeRoundToEven(mirror ? mirrorLane(note.pos, note.size) : note.pos);
           const laneEnd = laneStart + Math.max(1, nativeRoundToEven(note.size)) - 1;
           for (let lane = laneStart; lane <= laneEnd; lane += 1) {
-            if (this.latestLaneEffects.get(`${kind}:${lane}`) !== effect) continue;
+            if (this.laneFeedbackOwners.get(mirror ? LANE_COUNT - 1 - lane : lane)?.effect !== effect) continue;
             const outputIndex = particles.length;
             const id = `${effect.id}:${lane}`;
             const output = buffers
@@ -1387,20 +1515,7 @@ export class RenderFrameBuilder {
         output.seed = effect.seed;
         particles.push(output);
       }
-      // SetInVainLane marks both members of the selected two-lane input pair.
-      // Each member owns a separate width-1 effect view, and a later Play
-      // stops, clears, and restarts that same lane instance.
-      this.latestLaneInputEffects.clear();
-      for (let index = this.laneInputEffectHead; index < this.laneInputEffects.length; index++) {
-        const effect = this.laneInputEffects[index]!;
-        const age = (timeMs - effect.event.timeMs) / 1000;
-        if (age < 0 || age > effect.lifetime) continue;
-        const laneStart = nativeRoundToEven(
-          mirror ? mirrorLane(effect.event.lane, effect.event.width) : effect.event.lane,
-        );
-        const laneEnd = laneStart + Math.max(1, nativeRoundToEven(effect.event.width)) - 1;
-        for (let lane = laneStart; lane <= laneEnd; lane += 1) this.latestLaneInputEffects.set(lane, effect);
-      }
+      // Empty input only restarts lanes without a still-playing successful fill.
       for (let index = this.laneInputEffectHead; index < this.laneInputEffects.length; index++) {
         const effect = this.laneInputEffects[index]!;
         const age = (timeMs - effect.event.timeMs) / 1000;
@@ -1410,7 +1525,7 @@ export class RenderFrameBuilder {
         );
         const laneEnd = laneStart + Math.max(1, nativeRoundToEven(effect.event.width)) - 1;
         for (let lane = laneStart; lane <= laneEnd; lane += 1) {
-          if (this.latestLaneInputEffects.get(lane) !== effect) continue;
+          if (this.laneFeedbackOwners.get(mirror ? LANE_COUNT - 1 - lane : lane)?.effect !== effect) continue;
           const outputIndex = particles.length;
           const id = `${effect.id}:${lane}`;
           const output = buffers
@@ -1447,7 +1562,12 @@ export class RenderFrameBuilder {
       // allocation-free lineState additionally preserves pointer ownership in
       // play mode instead of lighting every overlapping chart line.
       for (const line of this.preparedLines) {
-        if (line.kind !== "long" || !snapshot.lineState.isActive(line.id) || line.authored.length < 2) {
+        if (
+          line.kind !== "long" ||
+          !snapshot.lineState.isActive(line.id) ||
+          line.authored.length < 2 ||
+          (this.seekTargetTimeMs !== undefined && timeMs <= this.seekTargetTimeMs)
+        ) {
           line.particleEffectActive = false;
           line.particleEffectSeed = undefined;
           line.particleEffectStartedAtMs = undefined;
@@ -1497,7 +1617,9 @@ export class RenderFrameBuilder {
     const rank = buffers
       ? writeNativeScoreRank(snapshot.score, settings.scoreRankScores, buffers.rank)
       : nativeScoreRank(snapshot.score, settings.scoreRankScores);
-    const last = snapshot.lastJudgement;
+    const visual = snapshot.watchVisualState;
+    const hudTimeMs = visual?.sampledTimeMs ?? timeMs;
+    const last = visual ? visual.lastJudgement : snapshot.lastJudgement;
     const hud = buffers?.frame.hud ?? {};
     const hudJudgements: RenderJudgementInstance[] = buffers?.hudJudgements ?? [];
     hudJudgements.length = 0;
@@ -1527,7 +1649,7 @@ export class RenderFrameBuilder {
           } satisfies RenderJudgementInstance);
       output.id = queued.id;
       output.judgement = judgement;
-      output.age = Math.max(0, (timeMs - queued.spawnedAtMs) / 1000);
+      output.age = Math.max(0, (hudTimeMs - queued.spawnedAtMs) / 1000);
       output.laneCenter = mirror
         ? LANE_COUNT - queued.event.note.pos - queued.event.note.size / 2
         : queued.event.note.pos + queued.event.note.size / 2;
@@ -1538,20 +1660,22 @@ export class RenderFrameBuilder {
     }
     hud.score = snapshot.score;
     // UICountAdditionInfoElement positive/negative clips are both 0.45 s.
-    hud.scoreDelta = last && timeMs - last.judgedAtMs < 450 ? last.scoreDelta : undefined;
-    hud.combo = snapshot.combo;
+    hud.scoreDelta = last && hudTimeMs - last.judgedAtMs < 450 ? last.scoreDelta : undefined;
+    hud.combo = visual?.combo ?? snapshot.combo;
     hud.comboAge =
-      last && snapshot.combo >= 2 && last.combo === snapshot.combo
-        ? Math.max(0, (timeMs - last.judgedAtMs) / 1000)
+      last && hud.combo >= 1 && last.combo === hud.combo
+        ? Math.max(0, (hudTimeMs - last.judgedAtMs) / 1000)
         : undefined;
-    hud.perfectCombo = snapshot.perfectCombo;
+    hud.perfectCombo = visual?.perfectCombo ?? snapshot.perfectCombo;
+    hud.fullCombo = visual?.fullCombo ?? snapshot.fullCombo;
+    hud.continuationEffects = settings.continuationEffectDisplay ?? true;
     hud.life = snapshot.life;
     hud.maxLife = 1000;
     hud.rank = rank.rank;
     hud.rankProgress = rank.progress;
     hud.rankLabels = HUD_RANK_LABELS;
     hud.judgement = last ? judgementName(last.judgement) : undefined;
-    hud.judgementAge = last ? Math.max(0, (timeMs - last.judgedAtMs) / 1000) : undefined;
+    hud.judgementAge = last ? Math.max(0, (hudTimeMs - last.judgedAtMs) / 1000) : undefined;
     hud.fastSlow = last?.timing === 1 ? "FAST" : last?.timing === 2 ? "SLOW" : null;
     hud.differenceMs = last?.diffMs;
     hud.judgements = hudJudgements;
@@ -1570,14 +1694,22 @@ export class RenderFrameBuilder {
     stage.guidelineCount = settings.guidelineCount ?? DEFAULT_RENDER_SETTINGS.guidelineCount;
     stage.backgroundBrightness = settings.backgroundBrightness ?? DEFAULT_RENDER_SETTINGS.backgroundBrightness;
 
+    const gekisouConfiguration = this.gekisouPresentationConfiguration;
+    const overlays = this.gekisouPresentation && gekisouConfiguration
+      ? gekisouConfiguration.projector.project(
+          this.gekisouPresentation.sample(hudTimeMs), gekisouConfiguration.context,
+        )
+      : undefined;
+
     const deltaTime = Math.max(0, timeMs - this.lastTimeMs) / 1000;
     this.lastTimeMs = timeMs;
     if (buffers) {
       buffers.frame.time = timeMs / 1000;
       buffers.frame.deltaTime = deltaTime;
+      buffers.frame.overlays = overlays;
       return buffers.frame;
     }
-    return { time: timeMs / 1000, deltaTime, notes, simultaneousLines, holds, particles, hud, stage };
+    return { time: timeMs / 1000, deltaTime, notes, simultaneousLines, holds, particles, hud, stage, overlays };
   }
 
   private appendHoldPoint(

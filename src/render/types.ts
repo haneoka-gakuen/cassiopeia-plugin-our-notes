@@ -30,7 +30,15 @@ export class NativeChartVisualProfilesError extends Error {
 }
 
 export type RenderNoteKind =
-  "tap" | "flick" | "flick-left" | "flick-right" | "slide-start" | "slide-node" | "slide-end" | "trace" | "guide";
+  | "tap"
+  | "flick"
+  | "flick-left"
+  | "flick-right"
+  | "slide-start"
+  | "slide-node"
+  | "slide-end"
+  | "trace"
+  | "guide";
 
 export type RenderDirection = "none" | "left" | "right" | "up";
 
@@ -114,7 +122,8 @@ export type RenderParticleKind =
   | "lane-effect-slide"
   | "lane-effect-flick"
   | "lane-effect-flick-left"
-  | "lane-effect-flick-right";
+  | "lane-effect-flick-right"
+  | "lane-effect-gekisou";
 
 export type RenderLaneEffectKind = Extract<RenderParticleKind, `lane-${string}`>;
 
@@ -125,7 +134,8 @@ export function isRenderLaneEffectKind(kind: RenderParticleKind): kind is Render
     kind === "lane-effect-slide" ||
     kind === "lane-effect-flick" ||
     kind === "lane-effect-flick-left" ||
-    kind === "lane-effect-flick-right"
+    kind === "lane-effect-flick-right" ||
+    kind === "lane-effect-gekisou"
   );
 }
 
@@ -234,6 +244,10 @@ export interface RenderHudState {
   /** Seconds since the current combo value was awarded. */
   comboAge?: number;
   perfectCombo?: boolean;
+  /** Native whole-run FC state from the session snapshot. */
+  fullCombo?: boolean;
+  /** Native continuation tier display; false retains the Normal combo. */
+  continuationEffects?: boolean;
   life?: number;
   maxLife?: number;
   rank?: string;
@@ -261,9 +275,44 @@ export interface RenderStageState {
   laneOpacity?: number;
   guidelineOpacity?: number;
   judgementLineOpacity?: number;
-  /** 0, 4, 6, 8 or 12 are the values exposed by the original option UI. */
+  /** Resolved line count; the game's option profile owns its enum-to-count mapping. */
   guidelineCount?: number;
   backgroundBrightness?: number;
+}
+
+/** Texture transfer convention shared with the portable GeometryBuffer contract. */
+export interface RenderOverlayTexture {
+  url: string;
+  origin: "top-left" | "bottom-left";
+}
+
+export interface RenderOverlayText {
+  id: string;
+  text: string;
+  fontKey: string;
+  /** Viewport pixels, top-left x/y and width/height. */
+  bounds: readonly [number, number, number, number];
+  fontSize: number;
+  align: "left" | "center" | "right";
+  verticalAlign: "top" | "middle" | "bottom";
+  color: readonly [number, number, number, number];
+}
+
+/** Final geometry; the presentation producer owns transforms, animation and colour policy. */
+export interface RenderOverlaySprite {
+  id: string;
+  textureKey: string;
+  /** Ten floats per vertex: clip xyzw, UV, Gamma RGBA. Preserve W for perspective interpolation. */
+  vertices: ArrayLike<number>;
+  indices: ArrayLike<number>;
+  blend: "alpha" | "source-alpha-additive" | "additive";
+  pass: "game" | "effects" | "underlay" | "screen";
+  sortingOrder: number;
+  material?: {
+    shader: "mobile-add-hdr" | "texture-tint";
+    tint: readonly [number, number, number, number];
+    textureTransform: readonly [number, number, number, number];
+  };
 }
 
 /** Render-only snapshot. It intentionally contains no gameplay state machine. */
@@ -276,6 +325,8 @@ export interface RenderFrame {
   particles?: ReadonlyArray<RenderParticleEffect>;
   hud?: RenderHudState;
   stage?: RenderStageState;
+  overlays?: ReadonlyArray<RenderOverlaySprite>;
+  overlayTexts?: ReadonlyArray<RenderOverlayText>;
 }
 
 export interface OurNotesRendererOptions<Canvas = unknown> {
@@ -283,6 +334,8 @@ export interface OurNotesRendererOptions<Canvas = unknown> {
   /** Optional transparent 2D overlay; keeps high-density HUD out of WebGL. */
   hudCanvas?: Canvas;
   assets: OurNotesAssetManifest;
+  overlayTextures?: Readonly<Record<string, RenderOverlayTexture>>;
+  overlayFonts?: Readonly<Record<string, TmpSdfFontAssetManifest>>;
   laneCount?: number;
   stageWidth?: number;
   /** Native Unity +Z coordinate; StageProjector reflects it into Three -Z. */

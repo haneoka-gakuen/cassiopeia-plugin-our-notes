@@ -1,7 +1,11 @@
 import { defineConfig } from "vite";
 export default defineConfig({
   build: {
-    lib: { entry: { index: "src/index.ts" }, formats: ["es"], fileName: (_format, name) => name + ".js" },
+    lib: {
+      entry: { index: "src/index.ts", authored: "src/authored.ts" },
+      formats: ["es"],
+      fileName: (_format, name) => name + ".js",
+    },
     minify: false,
     sourcemap: true,
     target: "es2022",
@@ -10,6 +14,7 @@ export default defineConfig({
       // Library mode otherwise embeds every PNG in this package's JS.
       external: (id) =>
         id === "./noteTextures.js" ||
+        id === "./gekisouStageSource.js" ||
         id.startsWith("@haneoka/") ||
         id.startsWith("@sonolus/") ||
         id === "three" ||

@@ -32,6 +32,23 @@ export interface TitleIntroductionGekisouContent {
   missions?: ReadonlyArray<TitleIntroductionGekisouMission>;
 }
 
+export interface OurNotesTitleIntroductionMode {
+  isGekisouEnabled: boolean;
+  isLightweightMode: boolean;
+}
+
+/** UILiveStartCanvas.Initialize binds the two independent presentation modes. */
+export function createOurNotesTitleIntroductionContent(
+  content: TitleIntroductionContent,
+  mode: Readonly<OurNotesTitleIntroductionMode>,
+): TitleIntroductionContent {
+  return {
+    ...content,
+    layoutMode: mode.isLightweightMode ? "lightweight" : "normal",
+    gekisou: mode.isGekisouEnabled ? { ...content.gekisou, enabled: true } : undefined,
+  };
+}
+
 export interface TitleIntroductionTiming {
   totalDurationMs: number;
   displayStartMs: number;
