@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -51,6 +52,8 @@ final class OurNotesIntroProjector {
   bool _laneVisible = true;
   double? _laneShownAt;
   List<OurNotesIntroTimelineValue> _values = const [];
+  String? _terminalInput;
+  OurNotesIntroFrame? _terminalFrame;
   double get durationSeconds => timeline.durationSeconds;
   bool supports({required String server, required String sourceId}) =>
       packet['server'] == server && packet['sourceId'] == sourceId;
@@ -107,6 +110,8 @@ final class OurNotesIntroProjector {
       : path;
 
   void _newSystems() {
+    _terminalInput = null;
+    _terminalFrame = null;
     _systems.clear();
     for (final object in source.local.where(
       (v) => v.type == 'ParticleSystem',
@@ -181,6 +186,42 @@ final class OurNotesIntroProjector {
       _laneVisible = _sourceLaneVisible(_values);
     }
     _requested = seconds;
+    final terminalInput = seconds >= durationSeconds
+        ? jsonEncode([
+            viewport.width,
+            viewport.height,
+            viewport.pixelRatio,
+            viewport.worldToClip,
+            viewport.fieldOfViewRadians,
+            viewport.cameraPosition,
+            viewport.cameraXDegrees,
+            canonicalSong,
+            difficulty,
+            locale,
+            liveMode,
+            isLightweightMode,
+            bypass,
+          ])
+        : null;
+    final cached = _terminalFrame;
+    if (terminalInput != null &&
+        terminalInput == _terminalInput &&
+        cached != null) {
+      return OurNotesIntroFrame(
+        elapsedSeconds: cached.elapsedSeconds,
+        durationSeconds: cached.durationSeconds,
+        complete: cached.complete,
+        gameLaneVisible: cached.gameLaneVisible,
+        tapAlpha: cached.tapAlpha,
+        backgroundScale: cached.backgroundScale,
+        meshes: cached.meshes,
+        materials: cached.materials,
+        gameDraws: cached.gameDraws,
+        effectDraws: cached.effectDraws,
+        draws: cached.draws,
+        voiceCues: timeline.advanceSignals(_evaluated, bypass: bypass),
+      );
+    }
     if (bypass) {
       _values = timeline.sample(durationSeconds);
       scene.apply(_values);
@@ -236,7 +277,7 @@ final class OurNotesIntroProjector {
       difficulty: difficulty,
       locale: locale,
       liveMode: liveMode,
-        isLightweightMode: isLightweightMode,
+      isLightweightMode: isLightweightMode,
       timeline: _values,
       meshes: meshes,
       materials: materials,
@@ -254,7 +295,7 @@ final class OurNotesIntroProjector {
     final tapTime = _laneShownAt == null
         ? 1.0
         : ((_evaluated - _laneShownAt!) / tapFadeDuration).clamp(0, 1);
-    return OurNotesIntroFrame(
+    final result = OurNotesIntroFrame(
       elapsedSeconds: seconds,
       durationSeconds: durationSeconds,
       complete: seconds >= durationSeconds,
@@ -268,6 +309,11 @@ final class OurNotesIntroProjector {
       draws: draws,
       voiceCues: timeline.advanceSignals(_evaluated, bypass: bypass),
     );
+    if (terminalInput != null) {
+      _terminalInput = terminalInput;
+      _terminalFrame = result;
+    }
+    return result;
   }
 
   Map<String, Object?> get diagnostic => {
