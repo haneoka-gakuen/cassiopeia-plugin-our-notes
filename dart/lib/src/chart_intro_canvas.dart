@@ -910,6 +910,7 @@ final class OurNotesIntroCanvas {
       materials[key] = NativeMaterial(
         texture: 'intro:font:${entry.key}',
         recipe: NativeMaterialRecipe.sdfText,
+        coverageChannel: font.coverageChannel,
         textureAlpha: NativeTextureAlpha.independent,
         uniformFloats: Float32List.fromList([
           for (final c in ['r', 'g', 'b', 'a']) (face[c] as num).toDouble(),

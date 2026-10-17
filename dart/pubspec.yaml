@@ -12,10 +12,10 @@ dependencies:
   haneoka_render_profile:
     git:
       url: https://github.com/haneoka-gakuen/haneoka-render-profile.git
-      ref: 63bf1dfb76e0cd609cc076560b0c6c47d0305a4a
+      ref: 057f3ebc95808248b63c92a880594d8fcdbdcad9
   render_contracts:
     git:
       url: https://github.com/haneoka-gakuen/render-kernel-flutter.git
-      ref: d810428b8719d083ab97dda77dc3ce7de0ace444
+      ref: 235abdfab633a49acd7e78d81710bb7de9195d04
       path: packages/render_contracts
   vector_math: ^2.2.0
