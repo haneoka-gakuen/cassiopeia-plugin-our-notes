@@ -12,6 +12,7 @@ export 'src/chart_lane_feedback.dart';
 export 'src/chart_gekisou.dart';
 export 'src/chart_gekisou_presentation.dart';
 export 'src/chart_runtime.dart';
+export 'src/haptic_feedback_profile.dart';
 export 'src/chart_header.dart';
 export 'src/chart_gekisou_overlay.dart';
 export 'src/chart_gekisou_stage.dart';

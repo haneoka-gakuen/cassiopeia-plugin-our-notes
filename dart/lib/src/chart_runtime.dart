@@ -3,6 +3,7 @@ import 'package:cassiopeia_runtime/cassiopeia_runtime.dart';
 import 'chart_gekisou.dart';
 import 'chart_gekisou_presentation.dart';
 import 'chart_lane_feedback.dart';
+import 'haptic_feedback_profile.dart';
 
 typedef OurNotesWatchSourceNote = ({
   int timeMs,
@@ -101,6 +102,39 @@ final class OurNotesWatchFeedback {
   final int? hapticRecipe;
 }
 
+/// Formal LiveHapticType groups use five consecutive judgements, Bad to Just.
+int? ourNotesHapticRecipe(int operateType, int judgement) {
+  if (judgement < 2 || judgement > 6) return null;
+  final firstType = switch (operateType) {
+    40 || 41 || 42 || 102 => 6,
+    60 || 61 || 62 || 63 || 104 || 105 => 11,
+    21 || 120 => 16,
+    _ => 1,
+  };
+  final recipe =
+      OurNotesHapticFeedbackProfile.recipeByType[firstType + judgement - 2];
+  return recipe != OurNotesHapticFeedbackProfile.noneRecipeId ? recipe : null;
+}
+
+/// Source event order: note judgements, then a newly active long line.
+final class OurNotesWatchHapticCues {
+  bool _held = false;
+
+  Iterable<int> observe(
+    Iterable<int> noteRecipes, {
+    required bool held,
+    required bool live,
+  }) {
+    final beginLong = held && !_held;
+    _held = held;
+    if (!live) return const [];
+    return [
+      ...noteRecipes,
+      if (beginLong) OurNotesHapticFeedbackProfile.recipeByType[22],
+    ];
+  }
+}
+
 OurNotesWatchFeedback ourNotesWatchFeedback({
   required int noteTimeMs,
   required int operateType,
@@ -157,7 +191,7 @@ OurNotesWatchFeedback ourNotesWatchFeedback({
         ? ChartLaneFeedbackKind.gekisou
         : ordinaryLane,
     soundCue: sound,
-    hapticRecipe: 3,
+    hapticRecipe: ourNotesHapticRecipe(operateType, judgement),
   );
 }
 
