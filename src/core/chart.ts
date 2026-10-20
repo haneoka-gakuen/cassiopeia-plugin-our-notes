@@ -501,7 +501,7 @@ export function buildChart(root: SsRoot, observer?: ChartBuildSourceObserver): C
 
   const byId = new Map(notes.map((note) => [note.id, note]));
   const viewNotesByBegin = new Map<number, Map<number, ChartNote>>();
-  const comboPathByEndpoints = new Map<
+  const comboPathByNodes = new Map<
     string,
     { line: ChartLine; authored: ChartNote[]; begin: ChartNote; end: ChartNote }
   >();
@@ -517,11 +517,26 @@ export function buildChart(root: SsRoot, observer?: ChartBuildSourceObserver): C
     const viewNotes = viewNotesByBegin.get(begin.id) ?? new Map<number, ChartNote>();
     for (const note of authored.slice(1)) viewNotes.set(note.id, note);
     viewNotesByBegin.set(begin.id, viewNotes);
-    const key = `${begin.id}:${end.id}`;
-    if (!comboPathByEndpoints.has(key)) comboPathByEndpoints.set(key, { line, authored, begin, end });
+    const key = JSON.stringify([
+      begin.id,
+      end.id,
+      authored.map((note) => [
+        note.tick,
+        note.pos,
+        note.size,
+        note.operateType,
+        note.critical,
+        note.direction,
+        note.easeL,
+        note.easeR,
+        note.visible,
+        note.slideAlong,
+      ]),
+    ]);
+    if (!comboPathByNodes.has(key)) comboPathByNodes.set(key, { line, authored, begin, end });
   }
 
-  const comboPaths = [...comboPathByEndpoints.values()].sort(
+  const comboPaths = [...comboPathByNodes.values()].sort(
     (a, b) => a.end.timeMs - b.end.timeMs || a.end.tick - b.end.tick || a.line.id - b.line.id,
   );
   let generatedComboCount = 0;

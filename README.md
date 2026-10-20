@@ -9,6 +9,10 @@ It owns source normalization and presentation policy. Cassiopeia still owns
 timing and judgement; the Three renderer owns WebGL; the browser host owns the
 music clock, pointer events, and sound playback.
 
+Coincident slide endpoints share one judged note. Automatic combo ticks retain
+each distinct authored path between those endpoints, including mirrored hidden
+midpoints; identical paths share one set of ticks.
+
 ## Build from a clean Git workspace
 
 Link the unpublished kernel peer from a local Git workspace:
