@@ -11,7 +11,9 @@ music clock, pointer events, and sound playback.
 
 Coincident slide endpoints share one judged note. Automatic combo ticks retain
 each distinct authored path between those endpoints, including mirrored hidden
-midpoints; identical paths share one set of ticks.
+midpoints; identical paths share one set of ticks. Judged checkpoints affect
+only their own path, including when several slides share a head and end at
+different times.
 
 ## Build from a clean Git workspace
 

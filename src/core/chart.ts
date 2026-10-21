@@ -500,7 +500,6 @@ export function buildChart(root: SsRoot, observer?: ChartBuildSourceObserver): C
   }
 
   const byId = new Map(notes.map((note) => [note.id, note]));
-  const viewNotesByBegin = new Map<number, Map<number, ChartNote>>();
   const comboPathByNodes = new Map<
     string,
     { line: ChartLine; authored: ChartNote[]; begin: ChartNote; end: ChartNote }
@@ -514,9 +513,6 @@ export function buildChart(root: SsRoot, observer?: ChartBuildSourceObserver): C
     if (authored.length < 2) continue;
     const begin = authored[0]!;
     const end = authored[authored.length - 1]!;
-    const viewNotes = viewNotesByBegin.get(begin.id) ?? new Map<number, ChartNote>();
-    for (const note of authored.slice(1)) viewNotes.set(note.id, note);
-    viewNotesByBegin.set(begin.id, viewNotes);
     const key = JSON.stringify([
       begin.id,
       end.id,
@@ -542,7 +538,8 @@ export function buildChart(root: SsRoot, observer?: ChartBuildSourceObserver): C
   let generatedComboCount = 0;
   for (const { line, authored, begin, end } of comboPaths) {
     if (end.timeMs <= begin.timeMs) continue;
-    const runtimeView = [...(viewNotesByBegin.get(begin.id)?.values() ?? [])]
+    const runtimeView = authored
+      .slice(1)
       .filter((note) => note.id !== end.id && note.timeMs < end.timeMs && note.judged)
       .sort((left, right) => {
         const a = converter.tickToBarPosition(left.tick);
