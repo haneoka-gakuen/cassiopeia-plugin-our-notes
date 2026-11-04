@@ -26,7 +26,7 @@ export class NativeScrollClock {
   }
 }
 interface PathSample { timeMs: number; pos: number; size: number; value: number; left: NativeScrollClock; right: NativeScrollClock; ratio: number }
-interface ScrollLine { id: number; kind: "long" | "guide"; critical: boolean; minimumWidth: number; authored: ChartNote[]; points: PathSample[]; start: number; end: number }
+interface ScrollLine { id: number; kind: "long" | "guide"; critical: boolean; minimumWidth: number; authored: ChartNote[]; points: PathSample[]; start: number; end: number; clocks: NativeScrollClock[]; minimumValue: number; maximumValue: number }
 interface NotePartition { clock: NativeScrollClock; speed?: number; notes: { note: ChartNote; value: number }[] }
 interface ProjectionPolicy {
   kind(note: ChartNote): RenderNoteKind;
@@ -73,7 +73,13 @@ export function prepareNativeScrollGeometry(chart: ChartDocument, scroll: NonNul
           points.push({ timeMs, pos: shape.pos, size: shape.size, left, right, ratio, value: left.at(timeMs - offsetMs) * (1 - ratio) + right.at(timeMs - offsetMs) * ratio });
         }
       }
-      lines.push({ id: line.id, kind: line.kind, critical: line.critical, minimumWidth: authored.reduce((size, note) => Math.min(size, note.size), Infinity), authored, points, start: authored[0]!.timeMs, end: authored[authored.length - 1]!.timeMs });
+      const usedClocks = new Set<NativeScrollClock>();
+      let minimumValue = Infinity, maximumValue = -Infinity;
+      for (const point of points) {
+        usedClocks.add(point.left); usedClocks.add(point.right);
+        minimumValue = Math.min(minimumValue, point.value); maximumValue = Math.max(maximumValue, point.value);
+      }
+      lines.push({ id: line.id, kind: line.kind, critical: line.critical, minimumWidth: authored.reduce((size, note) => Math.min(size, note.size), Infinity), authored, points, start: authored[0]!.timeMs, end: authored[authored.length - 1]!.timeMs, clocks: [...usedClocks], minimumValue, maximumValue });
     }
   return { clocks, noteClocks, lines };
 }
@@ -149,6 +155,13 @@ export class NativeScrollProjection {
     for (const line of this.lines) {
       if (timeMs >= line.end) continue;
       const duration = view(this.lineSpeeds.get(line.id)), start = Math.max(timeMs, line.start), path = this.path;
+      if (timeMs < line.start) {
+        let minimumClock = Infinity, maximumClock = -Infinity;
+        for (const clock of line.clocks) {
+          minimumClock = Math.min(minimumClock, clock.current); maximumClock = Math.max(maximumClock, clock.current);
+        }
+        if (line.minimumValue - maximumClock > duration * 1.1 || line.maximumValue - minimumClock < -duration * .16) continue;
+      }
       path.length = 0;
       const append = (lane: number, width: number, approach: number, lineProgress: number) => {
         const point = this.pathPool[path.length] ??= { lane: 0, width: 0, approach: 0 };

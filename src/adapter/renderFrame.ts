@@ -1244,7 +1244,7 @@ export class RenderFrameBuilder {
     const inverseViewTimeMs = 1 / viewTimeMs;
     const earliestVisibleTime = visualTimeMs - viewTimeMs * 0.16;
     const latestVisibleTime = visualTimeMs + viewTimeMs * 1.1;
-    if (!this.visualProfiles) {
+    if (!this.visualProfiles && !this.scrollProjection) {
       this.firstVisibleNoteCursor = adjustLowerBoundCursor(
         this.renderableNotes,
         earliestVisibleTime,
@@ -1257,7 +1257,7 @@ export class RenderFrameBuilder {
       );
     }
     if (this.visualProfiles) this.profileViewTimes.clear();
-    const profiledNotes = this.visualProfiles
+    const profiledNotes = this.visualProfiles && !this.scrollProjection
       ? this.collectProfileNotes(visualTimeMs, viewTimeMs, noteSpeedCurve)
       : undefined;
     const buffers = reuse ? this.reusableBuffers() : undefined;
@@ -1265,7 +1265,7 @@ export class RenderFrameBuilder {
     notes.length = 0;
     for (
       let cursor = profiledNotes ? 0 : this.firstVisibleNoteCursor;
-      cursor < (profiledNotes?.length ?? this.lastVisibleNoteCursor);
+      !this.scrollProjection && cursor < (profiledNotes?.length ?? this.lastVisibleNoteCursor);
       cursor++
     ) {
       const index = profiledNotes ? profiledNotes[cursor]! : cursor;
@@ -1297,7 +1297,7 @@ export class RenderFrameBuilder {
 
     const simultaneousLines: RenderSimultaneousLine[] = buffers?.simultaneousLines ?? [];
     simultaneousLines.length = 0;
-    if (settings.showSimultaneousLine ?? DEFAULT_RENDER_SETTINGS.showSimultaneousLine) {
+    if (!this.scrollProjection && (settings.showSimultaneousLine ?? DEFAULT_RENDER_SETTINGS.showSimultaneousLine)) {
       // Pair lines share note view progress, but the SpriteRenderer's
       // serialized 0.025-unit Y size remains fixed; only X is resized by
       // LivePairNoteLineView.SetProgress.
@@ -1362,7 +1362,7 @@ export class RenderFrameBuilder {
 
     const holds: MutableRenderHold[] = buffers?.holds ?? [];
     holds.length = 0;
-    for (const line of this.preparedLines) {
+    if (!this.scrollProjection) for (const line of this.preparedLines) {
       const authored = line.authored;
       const lineViewTimeMs = this.visualProfiles
         ? this.profileViewTime(this.visualProfiles.lines.get(line.id), viewTimeMs, noteSpeedCurve)
