@@ -1,3 +1,4 @@
+import { NativeScrollProjection } from "./scrollProjection.js";
 import { OurNotesGekisouPlan, OUR_NOTES_GEKISOU_LANE_LIFETIME } from "../presentation/Gekisou.js";
 import { OurNotesGekisouPresentation } from "../presentation/GekisouPresentation.js";
 import type {
@@ -739,10 +740,10 @@ interface QueuedHudJudgement {
 const HUD_JUDGEMENT_LIFETIME_SECONDS = 0.3;
 
 export class RenderFrameBuilder {
-  private readonly visualTimeMap: VisualTimeMap;
-  private readonly renderableNotes: ReadonlyArray<ChartNote>;
-  private readonly preparedSimultaneousLines: ReadonlyArray<PreparedSimultaneousLine>;
-  private readonly preparedLines: ReadonlyArray<PreparedLine>;
+  private visualTimeMap: VisualTimeMap;
+  private renderableNotes: ReadonlyArray<ChartNote>;
+  private preparedSimultaneousLines: ReadonlyArray<PreparedSimultaneousLine>;
+  private preparedLines: ReadonlyArray<PreparedLine>;
   private readonly effects: QueuedJudgementEffect[] = [];
   private readonly hudJudgements: QueuedHudJudgement[] = [];
   private readonly laneFeedbackOwners = new Map<number, LaneFeedbackOwner>();
@@ -756,6 +757,7 @@ export class RenderFrameBuilder {
   private gekisouPresentation: OurNotesGekisouPresentation | undefined;
   private gekisouPresentationConfiguration: OurNotesGekisouPresentationConfiguration | undefined;
   private visualProfiles: ResolvedVisualProfiles | undefined;
+  private scrollProjection: NativeScrollProjection | undefined;
   private readonly notePartitions: ProfileNotePartition[] = [];
   private readonly pairPartitions: ProfilePairPartition[] = [];
   private readonly profileNoteIndices: number[] = [];
@@ -791,7 +793,8 @@ export class RenderFrameBuilder {
     this.noteEffectSkin = options.noteEffectSkin ?? "effect001";
     this.particleSeedEntropy =
       options.particleSeed === undefined ? automaticParticleSeedEntropy() : mixParticleSeed(options.particleSeed);
-    this.visualTimeMap = new VisualTimeMap(chart.timeScaleChanges);
+    this.visualTimeMap = new VisualTimeMap(options.visualProfiles?.scroll ? [] : chart.timeScaleChanges);
+    this.scrollProjection = this.createScrollProjection(options.visualProfiles);
     const sourceNoteById = new Map(chart.notes.map((note) => [note.id, note]));
     const visualNoteById = new Map(
       chart.notes.map((note) => [note.id, { ...note, timeMs: this.visualTimeMap.toScaledTimeMs(note.timeMs) }]),
@@ -881,7 +884,25 @@ export class RenderFrameBuilder {
   /** Replace visual profiles on this same compiled chart; keep judgement/HUD/effect timelines intact. */
   setVisualProfiles(profiles: NativeChartVisualProfiles | undefined): void {
     const resolved = resolveVisualProfiles(this.chart, profiles);
+    const replacement = !!profiles?.scroll !== !!this.scrollProjection
+      ? new RenderFrameBuilder(this.chart, profiles ? { visualProfiles: profiles } : {}) : undefined;
+    const scroll = replacement ? replacement.scrollProjection : this.createScrollProjection(profiles);
     // Validation finishes before any current valid window/state is replaced.
+    if (replacement) {
+      const previous = new Map(this.preparedLines.map(line => [line.id, line]));
+      for (const line of replacement.preparedLines) {
+        const old = previous.get(line.id);
+        if (old) {
+          line.particleEffectActive = old.particleEffectActive;
+          line.particleEffectSeed = old.particleEffectSeed;
+          line.particleEffectStartedAtMs = old.particleEffectStartedAtMs;
+        }
+      }
+      this.visualTimeMap = replacement.visualTimeMap;
+      this.renderableNotes = replacement.renderableNotes;
+      this.preparedSimultaneousLines = replacement.preparedSimultaneousLines;
+      this.preparedLines = replacement.preparedLines;
+    }
     this.visualProfiles = resolved;
     this.notePartitions.length = 0;
     this.pairPartitions.length = 0;
@@ -899,6 +920,20 @@ export class RenderFrameBuilder {
       delete line.rightApproach;
     }
     this.configureVisualPartitions();
+    this.scrollProjection = scroll;
+  }
+
+  private createScrollProjection(profiles: NativeChartVisualProfiles | undefined): NativeScrollProjection | undefined {
+    if (!profiles?.scroll) return;
+    try {
+      return new NativeScrollProjection(this.chart, profiles, {
+        kind: renderKind, direction: renderDirection, hiddenStart: isGuideStart,
+        guideAlpha: nativeGuideEndAlpha, viewTime: noteViewTimeSeconds,
+      });
+    } catch (error) {
+      throw new NativeChartVisualProfilesError([{ code: "invalid-profiles", target: "notes",
+        message: error instanceof Error ? error.message : "Invalid scroll profiles" }]);
+    }
   }
 
   private configureVisualPartitions(): void {
@@ -1700,6 +1735,13 @@ export class RenderFrameBuilder {
           this.gekisouPresentation.sample(hudTimeMs), gekisouConfiguration.context,
         )
       : undefined;
+
+    this.scrollProjection?.project(timeMs, snapshot, {
+      noteSpeed, curve: noteSpeedCurve, mirror, noteSize,
+      pairs: settings.showSimultaneousLine ?? DEFAULT_RENDER_SETTINGS.showSimultaneousLine,
+      guideAlpha: Math.max(.1, Math.min(1, settings.guideAlpha ?? DEFAULT_RENDER_SETTINGS.guideAlpha)),
+      longAlpha: Math.max(.1, Math.min(1, settings.longAlpha ?? DEFAULT_RENDER_SETTINGS.longAlpha)),
+    }, { notes, holds, simultaneousLines });
 
     const deltaTime = Math.max(0, timeMs - this.lastTimeMs) / 1000;
     this.lastTimeMs = timeMs;

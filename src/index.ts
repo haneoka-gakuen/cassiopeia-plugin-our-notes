@@ -26,3 +26,5 @@ export * from "./presentation/GekisouStageVideo.js";
 export * from "./presentation/GekisouPlayback.js";
 
 export * from "./presentation/ScoringPolicy.js";
+
+export { NativeScrollClock, prepareNativeScrollGeometry } from "./adapter/scrollProjection.js";

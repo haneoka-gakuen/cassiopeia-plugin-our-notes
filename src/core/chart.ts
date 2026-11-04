@@ -15,6 +15,7 @@ type CoincidenceType = "tap" | "flick" | "trace";
 
 /** Synchronous source bindings; treat raw input references as read-only. */
 export interface ChartBuildSourceObserver {
+  scopeForSource?(source: SsRawNote): string;
   /** Every authored alias of a resolved note, including consumed guide singles. Generated Combo nodes are excluded. */
   onSourceNote?(raw: SsRawNote, nativeId: number): void;
   /** The original long/guide header and its created native line ID. */
@@ -92,7 +93,7 @@ function interpolateAutomaticNodes(nodes: SsRawNote[], fallback: SsRawNote["ease
   return shapes;
 }
 
-function buildGuideCoincidence(notes: SsRawNote[]): {
+function buildGuideCoincidence(notes: SsRawNote[], scope: (note: SsRawNote) => string): {
   types: Map<string, CoincidenceNote>;
   consumedSingles: Set<SsRawNote>;
 } {
@@ -106,7 +107,7 @@ function buildGuideCoincidence(notes: SsRawNote[]): {
     if (note.type !== "guide") continue;
     const first = note.node?.[0];
     if (!first || typeof first.t !== "number" || typeof first.pos !== "number") continue;
-    guideStartKeys.add(nativeOverlapKey(first.t, first.pos, first.size ?? 6));
+    guideStartKeys.add(scope(first) + ":" + nativeOverlapKey(first.t, first.pos, first.size ?? 6));
   }
 
   const coincidence = new Map<string, CoincidenceNote>();
@@ -114,7 +115,7 @@ function buildGuideCoincidence(notes: SsRawNote[]): {
   for (const note of notes) {
     if (note.type === "long" || note.type === "guide" || typeof note.t !== "number" || typeof note.pos !== "number")
       continue;
-    const key = nativeOverlapKey(note.t, note.pos, note.size ?? 6);
+    const key = scope(note) + ":" + nativeOverlapKey(note.t, note.pos, note.size ?? 6);
     if (!guideStartKeys.has(key) || coincidence.has(key)) continue;
     coincidence.set(key, {
       raw: note,
@@ -134,6 +135,7 @@ function resolveLineOperation(
   count: number,
   kind: "long" | "guide",
   coincidence: Map<string, CoincidenceNote>,
+  scope: (note: SsRawNote) => string,
 ): NoteOperateType {
   const begin = index === 0;
   const end = index === count - 1;
@@ -164,7 +166,7 @@ function resolveLineOperation(
   if (begin) {
     const key =
       typeof note.t === "number" && typeof note.pos === "number"
-        ? nativeOverlapKey(note.t, note.pos, note.size ?? 6)
+        ? scope(note) + ":" + nativeOverlapKey(note.t, note.pos, note.size ?? 6)
         : "";
     const coincident = coincidence.get(key)?.type;
     if (coincident === "tap") return NoteOperateType.GuideBeginNormal;
@@ -380,7 +382,8 @@ function createNativePositionTiming(root: SsRoot, converter: TickConverter) {
 export function buildChart(root: SsRoot, observer?: ChartBuildSourceObserver): ChartDocument {
   const converter = new TickConverter(root.bpm, root.sig);
   const comboTiming = createNativePositionTiming(root, converter);
-  const { types: coincidence, consumedSingles } = buildGuideCoincidence(root.notes);
+  const scope = (source: SsRawNote) => observer?.scopeForSource?.(source) ?? "";
+  const { types: coincidence, consumedSingles } = buildGuideCoincidence(root.notes, scope);
   const notes: ChartNote[] = [];
   const lines: ChartLine[] = [];
   let nextId = 0;
@@ -455,18 +458,18 @@ export function buildChart(root: SsRoot, observer?: ChartBuildSourceObserver): C
     const shapes = interpolateAutomaticNodes(nodes, raw.ease);
     const noteIds = nodes.map((node, index) => {
       const [leftEase, rightEase] = easePair(node, raw.ease);
-      const operation = resolveLineOperation(node, index, nodes.length, raw.type as "long" | "guide", coincidence);
+      const operation = resolveLineOperation(node, index, nodes.length, raw.type as "long" | "guide", coincidence, scope);
       const shape = shapes[index]!;
       const coincident =
         raw.type === "guide" && index === 0 && typeof node.t === "number" && typeof node.pos === "number"
-          ? coincidence.get(nativeOverlapKey(node.t, node.pos, node.size ?? 6))
+          ? coincidence.get(scope(node) + ":" + nativeOverlapKey(node.t, node.pos, node.size ?? 6))
           : undefined;
       const critical = coincident?.critical ?? node.crit === true;
       const direction = coincident?.direction ?? mapDirection(node);
       const visible = coincident?.visible ?? node.visible !== false;
       let resolved: ChartNote | undefined;
 
-      const mergeKey = endpointMergeKey(node.t ?? 0, shape, operation, critical, direction, leftEase, rightEase);
+      const mergeKey = scope(node) + ":" + endpointMergeKey(node.t ?? 0, shape, operation, critical, direction, leftEase, rightEase);
       if (!resolved && isMergeableEndpoint(operation)) resolved = mergedEndpoints.get(mergeKey);
       if (resolved) {
         if (!resolved.lineIds.includes(lineId)) resolved.lineIds.push(lineId);

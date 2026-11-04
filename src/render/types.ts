@@ -4,6 +4,13 @@ import type { OurNotesAssetManifest, TmpSdfFontAssetManifest } from "../assets/m
 export interface NativeChartVisualProfiles {
   notes: readonly { nativeNoteId: number; noteSpeed: number }[];
   lines: readonly { nativeLineId: number; noteSpeed: number }[];
+  scroll?: NativeChartScrollProfiles;
+}
+
+export interface NativeChartScrollProfiles {
+  offsetMs?: number;
+  groups: readonly { id: string; changes: readonly { timeMs: number; scale: number }[] }[];
+  notes: readonly { nativeNoteId: number; groupId: string }[];
 }
 
 export interface NativeChartVisualProfileDiagnostic {
